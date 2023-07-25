@@ -56,4 +56,5 @@ var render = noteDevice.GetRecord()
 
 //render.Save("test.png");
 
+//View Result
 render

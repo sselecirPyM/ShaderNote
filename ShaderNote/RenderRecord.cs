@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using Vortice;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -213,6 +212,7 @@ public record RenderRecord
             {
                 File = file,
                 Value = source,
+                Value1 = sourcePath,
                 EntryPoint = entryPoint,
                 SlotName = name,
                 AsArgument = argument,
@@ -231,6 +231,7 @@ public record RenderRecord
             {
                 File = file,
                 Value = source,
+                Value1 = sourcePath,
                 EntryPoint = entryPoint,
                 SlotName = name,
                 AsArgument = argument,
@@ -273,12 +274,47 @@ public record RenderRecord
         return this with { depthStencilFormt = format, };
     }
 
-
     public RenderRecord WithSize(int width, int height)
     {
         return this with { width = width, height = height };
     }
 
+    public RenderRecord WithClearColor(Vector4 color)
+    {
+        return this with { ClearColor = color };
+    }
+
+    public RenderRecord WithBlendState(BlendDescription blendDescription, string name = null, bool argument = false)
+    {
+        var recordItem = new RenderRecordItem()
+        {
+            caseName = "BlendState",
+            commonSlot = new VariableSlot()
+            {
+                Value = blendDescription,
+                SlotName = name,
+                AsArgument = argument,
+            },
+            PreviousRecord = this.recordItem
+        };
+        return this with { recordItem = recordItem };
+    }
+
+    public RenderRecord WithDepthStencilState(DepthStencilDescription depthStencilDescription, string name = null, bool argument = false)
+    {
+        var recordItem = new RenderRecordItem()
+        {
+            caseName = "DepthStencil",
+            commonSlot = new VariableSlot()
+            {
+                Value = depthStencilDescription,
+                SlotName = name,
+                AsArgument = argument,
+            },
+            PreviousRecord = this.recordItem
+        };
+        return this with { recordItem = recordItem };
+    }
 
     public RenderResult Render()
     {
@@ -286,18 +322,16 @@ public record RenderRecord
 
         var device = noteDevice.device;
         var context = noteDevice.deviceContext;
-        byte[] randomData = new byte[width * height * 8];
-        Random.Shared.NextBytes(randomData);
-        //var rasterizerState = device.CreateRasterizerState(new RasterizerDescription(CullMode.Back, FillMode.Solid) { ScissorEnable = false });
 
         ID3D11Texture2D[] texture2Ds = new ID3D11Texture2D[outputFormats1.Length];
         ID3D11RenderTargetView[] rtvs = new ID3D11RenderTargetView[outputFormats1.Length];
         for (int i = 0; i < outputFormats1.Length; i++)
         {
-            var texture2d = device.CreateTexture2D(randomData, Format.R8G8B8A8_UNorm, width, height, bindFlags: BindFlags.RenderTarget | BindFlags.ShaderResource);
+            var texture2d = device.CreateTexture2D(Format.R8G8B8A8_UNorm, width, height, bindFlags: BindFlags.RenderTarget | BindFlags.ShaderResource);
             var rtv = device.CreateRenderTargetView(texture2d);
             texture2Ds[i] = texture2d;
             rtvs[i] = rtv;
+            context.ClearRenderTargetView(rtv, new Vortice.Mathematics.Color4(ClearColor));
         }
         ID3D11Texture2D depth = null;
         ID3D11DepthStencilView dsv = null;
@@ -326,7 +360,6 @@ public record RenderRecord
                 MipLevels = 1,
                 SampleDescription = SampleDescription.Default,
             };
-            //depth = device.CreateTexture2D(depthStencilFormt, width, height, bindFlags: BindFlags.DepthStencil | BindFlags.ShaderResource);
             depth = device.CreateTexture2D(texture2DDescription);
             dsv = device.CreateDepthStencilView(depth, new DepthStencilViewDescription()
             {
@@ -337,8 +370,8 @@ public record RenderRecord
         }
 
 
+        //var rasterizerState = device.CreateRasterizerState(new RasterizerDescription(CullMode.Back, FillMode.Solid) { ScissorEnable = false });
         context.ClearState();
-        //context.ClearRenderTargetView(rtv, new Vortice.Mathematics.Color4(ClearColor));
         context.RSSetViewport(0, 0, width, height);
         context.RSSetScissorRect(0, 0, width, height);
         //context.RSSetState(rasterizerState);

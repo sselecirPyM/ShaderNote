@@ -156,7 +156,6 @@ public class NoteDevice : IDisposable
         return null;
     }
 
-
     internal byte[] GetVertexShaderByteCode(VariableSlot variableSlot)
     {
         if (variableSlot.Value != null && variableSlot.Value is string source)
@@ -204,7 +203,7 @@ public class NoteDevice : IDisposable
 
             return ShaderLRUCache.GetObject(variableSlot.ShortCut, (key) =>
             {
-                return device.CreatePixelShader(CompileShader(source, variableSlot.EntryPoint, null, "ps_5_0"));
+                return device.CreatePixelShader(CompileShader(source, variableSlot.EntryPoint, variableSlot.Value1 as string, "ps_5_0"));
             }) as ID3D11PixelShader;
         }
 
@@ -225,7 +224,6 @@ public class NoteDevice : IDisposable
 
             return ShaderLRUCache.GetObject(descs.ShortCut, key =>
             device.CreateInputLayout(inputElementDescriptions, GetVertexShaderByteCode(vertexShader))) as ID3D11InputLayout;
-
         }
         else
         {
@@ -266,6 +264,26 @@ public class NoteDevice : IDisposable
         }
     }
 
+    internal ID3D11BlendState GetBlendState(VariableSlot variableSlot)
+    {
+        variableSlot.ShortCut ??= "blend_state_" + ((BlendDescription)variableSlot.Value).GetHashCode().ToString();
+
+        return ShaderLRUCache.GetObject(variableSlot.ShortCut, (key) =>
+        {
+            return device.CreateBlendState((BlendDescription)variableSlot.Value);
+        }) as ID3D11BlendState;
+    }
+
+    internal ID3D11DepthStencilState GetDepthStencilState(VariableSlot variableSlot)
+    {
+        variableSlot.ShortCut ??= "depth_stencil_" + ((DepthStencilDescription)variableSlot.Value).GetHashCode().ToString();
+
+        return ShaderLRUCache.GetObject(variableSlot.ShortCut, (key) =>
+        {
+            return device.CreateDepthStencilState((DepthStencilDescription)variableSlot.Value);
+        }) as ID3D11DepthStencilState;
+    }
+
     string ObjectShortCut<T>(T[] source)
     {
         Span<int> hashCodes = stackalloc int[source.Length];
@@ -301,6 +319,5 @@ public class NoteDevice : IDisposable
         byte[] result = bVertexShader.AsBytes();
         bVertexShader.Release();
         return result;
-
     }
 }

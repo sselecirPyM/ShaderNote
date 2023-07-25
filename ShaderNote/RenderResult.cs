@@ -1,12 +1,11 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
-using Vortice.Direct3D11;
 using System.IO;
-using System.Text;
-using System.Reflection;
-using Vortice.DXGI;
 using System.Runtime.InteropServices;
+using System.Text;
+using Vortice.Direct3D11;
+using Vortice.DXGI;
 
 namespace ShaderNote;
 
@@ -110,13 +109,13 @@ public class RenderResult : IDisposable
         {
             string temp = Guid.NewGuid().ToString();
             Save($".cache/images/{temp}.png", i);
-            sb.Append($"<img style=\"padding:10px\" src=\".cache/images/{temp}.png\">");
+            sb.Append($"<img class=\"result-preview\" style=\"padding:10px\" src=\".cache/images/{temp}.png\">");
         }
         if (depthTexture != null)
         {
             string temp = Guid.NewGuid().ToString();
             SaveDepth($".cache/images/{temp}.png");
-            sb.Append($"<img style=\"padding:10px\" src=\".cache/images/{temp}.png\">");
+            sb.Append($"<img class=\"result-preview\" style=\"padding:10px\" src=\".cache/images/{temp}.png\">");
         }
         return sb.ToString();
     }

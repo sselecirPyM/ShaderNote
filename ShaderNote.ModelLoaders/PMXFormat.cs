@@ -323,8 +323,15 @@ namespace ShaderNote.ModelLoaders
             pmxFormat.Reload(reader);
             return pmxFormat;
         }
+        public static PMXFormat Load(string path)
+        {
+            PMXFormat pmxFormat = new PMXFormat();
+            using var stream = File.OpenRead(path);
+            pmxFormat.Reload(new BinaryReader(stream));
+            return pmxFormat;
+        }
 
-        public void Reload(BinaryReader reader)
+        void Reload(BinaryReader reader)
         {
             Textures.Clear();
             Materials.Clear();

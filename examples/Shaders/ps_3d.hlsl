@@ -21,18 +21,14 @@ struct Output
     float4 color3 : COLOR3;
 };
 
-//float4 main(PSIn input) : SV_TARGET
-//{
-//    //return texture0.Sample(sampler0, input.texcoord);
-//    return float4(input.texcoord * color.rg, color.b, 1);
-//}
 Output main(PSIn input) : SV_TARGET
 {
-    //return texture0.Sample(sampler0, input.texcoord);
-    float4 light=saturate(dot(input.normal,lightDir))*lightColor+0.5;
+    float4 light=(saturate(dot(input.normal,lightDir))*0.5+0.5)*lightColor;
+    light.a=1;
+    float4 tex1=texture0.Sample(sampler0,input.texcoord);
     Output output =
     {
-        float4((texture0.Sample(sampler0,input.texcoord)*light).rgb,1),
+        float4((tex1*light).rgb,tex1.a),
         light,
         float4(input.normal*0.5+0.5, 1),
         texture0.Sample(sampler0,input.texcoord),

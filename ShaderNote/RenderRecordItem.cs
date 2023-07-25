@@ -1,10 +1,7 @@
-﻿using Vortice;
+﻿using System.Collections.Generic;
+using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
-using Vortice.Mathematics;
-using Vortice.Direct3D;
-using System.Linq;
-using System.Collections.Generic;
 
 namespace ShaderNote;
 
@@ -35,24 +32,7 @@ internal class RenderRecordItem
     public int[] strides;
     public int[] offsets;
 
-    //public int refCount = 0;
-    //RenderRecordItem _previousRecord;
-    //public RenderRecordItem PreviousRecord
-    //{
-    //    get => _previousRecord; set
-    //    {
-    //        value.refCount++;
-    //        _previousRecord = value;
-    //    }
-    //}
-
     public RenderRecordItem PreviousRecord;
-
-
-    public Viewport? viewport;
-    public RawRect? scissor;
-
-    //public Format format;
 
     public string caseName;
     public VariableSlot commonSlot;
@@ -83,11 +63,6 @@ internal class RenderRecordItem
     {
         var deviceContext = noteDevice.deviceContext;
 
-        if (viewport != null)
-            deviceContext.RSSetViewport(viewport.Value);
-        if (scissor != null)
-            deviceContext.RSSetScissorRect(scissor.Value);
-
         var commonSlot = this.commonSlot;
 
         if (commonSlot != null && commonSlot.SlotName != null && renderStates.SlotValue.TryGetValue(commonSlot.SlotName, out var replaceSlot))
@@ -111,6 +86,12 @@ internal class RenderRecordItem
 
                 var d = (DrawIndexedInstances)commonSlot.Value;
                 deviceContext.DrawIndexedInstanced(d.indexCountPerInstance, d.instanceCount, d.startIndexLocation, d.baseVertexLocation, d.startInstanceLocation);
+                break;
+            case "DepthStencil":
+                deviceContext.OMSetDepthStencilState(noteDevice.GetDepthStencilState(commonSlot));
+                break;
+            case "BlendState":
+                deviceContext.OMSetBlendState(noteDevice.GetBlendState(commonSlot));
                 break;
             case "VertexShader":
                 deviceContext.VSSetShader(noteDevice.GetVertexShader(commonSlot));
@@ -152,17 +133,4 @@ internal class RenderRecordItem
         }
     }
 
-    //static FieldInfo[] comObjects;
-    //static RenderRecordItem()
-    //{
-    //    comObjects = typeof(RenderRecordItem).GetFields().Where(u => u.FieldType.IsAssignableTo(typeof(ComObject))).ToArray();
-    //}
-
-    //~RenderRecordItem()
-    //{
-    //    foreach (var comObject in comObjects)
-    //    {
-    //        ((ComObject)comObject.GetValue(this))?.Release();
-    //    }
-    //}
 }
