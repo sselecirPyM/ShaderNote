@@ -13,20 +13,40 @@ internal class DrawIndexedInstances
     public int baseVertexLocation;
     public int startInstanceLocation;
 }
+internal class RenderStates
+{
+    public VariableSlot vertexShader1;
+    public PrimitiveTopology primitiveTopology;
+
+    public Dictionary<string, VariableSlot> SlotValue = new();
+
+    public bool setInputLayout;
+    public VariableSlot inputElementDescriptions;
+
+    public Dictionary<int, ID3D11ShaderResourceView> TemporaryTexture = new();
+    public List<RenderResult> trash = new();
+
+    public void Dispose()
+    {
+        foreach (var value in TemporaryTexture)
+        {
+            value.Value.Release();
+        }
+        foreach (RenderResult v in trash)
+        {
+            v.Dispose();
+        }
+    }
+}
+internal class ResultWrap
+{
+    public RenderResult renderResult;
+    public bool depthChannel;
+    public int channel;
+}
+
 internal class RenderRecordItem
 {
-
-    internal class RenderStates
-    {
-        public VariableSlot vertexShader1;
-        public PrimitiveTopology primitiveTopology;
-
-        public Dictionary<string, VariableSlot> SlotValue = new();
-
-        public bool setInputLayout;
-        public VariableSlot inputElementDescriptions;
-    }
-
     public int offset;
     public int stride;
     public int[] strides;
@@ -37,29 +57,20 @@ internal class RenderRecordItem
     public string caseName;
     public VariableSlot commonSlot;
 
-    public void RunStateChain(NoteDevice noteDevice)
+    internal List<RenderRecordItem> GetList()
     {
-        RunStateChain1(noteDevice, new RenderStates());
+        var renderRecordItems = new List<RenderRecordItem>();
+        var current = this;
+        while (current != null)
+        {
+            renderRecordItems.Add(current);
+            current = current.PreviousRecord;
+        }
+        renderRecordItems.Reverse();
+        return renderRecordItems;
     }
 
-    void RunStateChain1(NoteDevice noteDevice, RenderStates renderStates)
-    {
-        if (commonSlot != null && commonSlot.AsArgument && !string.IsNullOrEmpty(commonSlot.SlotName))
-        {
-            renderStates.SlotValue[commonSlot.SlotName] = commonSlot;
-        }
-        if (PreviousRecord != null)
-        {
-            PreviousRecord.RunStateChain1(noteDevice, renderStates);
-        }
-        if (commonSlot != null && commonSlot.AsArgument)
-        {
-            return;
-        }
-        SetState(noteDevice, renderStates);
-    }
-
-    void SetState(NoteDevice noteDevice, RenderStates renderStates)
+    internal void SetState(NoteDevice noteDevice, RenderStates renderStates)
     {
         var deviceContext = noteDevice.deviceContext;
 
@@ -122,6 +133,12 @@ internal class RenderRecordItem
                 deviceContext.VSSetConstantBuffer(offset, constnatBuffer);
                 deviceContext.PSSetConstantBuffer(offset, constnatBuffer);
                 break;
+            case "RenderImage":
+                if (renderStates.TemporaryTexture.TryGetValue(offset, out var texture))
+                {
+                    deviceContext.PSSetShaderResource(offset, texture);
+                }
+                break;
             case "Image":
                 deviceContext.PSSetShaderResource(offset, noteDevice.GetImage(commonSlot.File));
                 break;
@@ -130,6 +147,54 @@ internal class RenderRecordItem
                 break;
             default:
                 throw new System.Exception();
+        }
+    }
+
+    internal void BeforeRender(NoteDevice noteDevice, RenderStates renderStates)
+    {
+        switch (caseName)
+        {
+            case "RenderImage":
+                var wrap = (ResultWrap)commonSlot.Value;
+                var renderResult = wrap.renderResult;
+                if (!renderResult.rendered)
+                    renderStates.trash.Add(renderResult);
+                renderResult.CheckRender();
+
+                if (wrap.depthChannel && renderResult.depthTexture != null)
+                {
+                    var tex =renderResult.depthTexture;
+                    var texDesc = tex.Description;
+                    var desc = new ShaderResourceViewDescription()
+                    {
+                        Format = D3D11Helper.GetSRVFormat(texDesc.Format),
+                        ViewDimension = ShaderResourceViewDimension.Texture2D,
+                        Texture2D = new Texture2DShaderResourceView()
+                        {
+                            MipLevels = 1,
+                        }
+                    };
+                    var srv = noteDevice.device.CreateShaderResourceView(tex, desc);
+                    renderStates.TemporaryTexture.Add(offset, srv);
+                }
+                if (!wrap.depthChannel)
+                {
+                    var tex = renderResult.texture2Ds[wrap.channel];
+                    var texDesc = tex.Description;
+                    var desc = new ShaderResourceViewDescription()
+                    {
+                        Format = D3D11Helper.GetSRVFormat(texDesc.Format),
+                        ViewDimension = ShaderResourceViewDimension.Texture2D,
+                        Texture2D = new Texture2DShaderResourceView()
+                        {
+                            MipLevels = 1,
+                        }
+                    };
+                    var srv = noteDevice.device.CreateShaderResourceView(tex, desc);
+                    renderStates.TemporaryTexture.Add(offset, srv);
+                }
+
+                break;
         }
     }
 

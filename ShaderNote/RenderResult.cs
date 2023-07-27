@@ -15,8 +15,14 @@ public class RenderResult : IDisposable
     internal ID3D11Texture2D[] texture2Ds;
     internal ID3D11Texture2D depthTexture;
 
+    internal RenderRecord renderRecord;
+
+    internal bool rendered;
+
+
     public void Save(string path, int index = 0)
     {
+        CheckRender();
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
         var desc = texture2Ds[index].Description;
 
@@ -25,6 +31,7 @@ public class RenderResult : IDisposable
 
     public void SaveDepth(string path)
     {
+        CheckRender();
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
         var desc = depthTexture.Description;
 
@@ -33,11 +40,53 @@ public class RenderResult : IDisposable
 
     public byte[] GetData(int index, out int width, out int height, out Format format)
     {
+        CheckRender();
+
         var desc = texture2Ds[index].Description;
         width = desc.Width;
         height = desc.Height;
         format = desc.Format;
         return GetTextureData(texture2Ds[index], noteDevice.device, noteDevice.deviceContext);
+    }
+
+    public string GetHtml()
+    {
+        CheckRender();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < texture2Ds.Length; i++)
+        {
+            string temp = Guid.NewGuid().ToString();
+            Save($".cache/images/{temp}.png", i);
+            sb.Append($"<img class=\"result-preview\" style=\"padding:10px\" src=\".cache/images/{temp}.png\">");
+        }
+        if (depthTexture != null)
+        {
+            string temp = Guid.NewGuid().ToString();
+            SaveDepth($".cache/images/{temp}.png");
+            sb.Append($"<img class=\"result-preview\" style=\"padding:10px\" src=\".cache/images/{temp}.png\">");
+        }
+        return sb.ToString();
+    }
+
+    internal void CheckRender()
+    {
+        if (rendered)
+            return;
+        rendered = true;
+
+        renderRecord.RenderTo(out texture2Ds, out depthTexture);
+    }
+
+    public void Dispose()
+    {
+        if (texture2Ds != null)
+        {
+            foreach (var texture2D in texture2Ds)
+                texture2D?.Release();
+            texture2Ds = null;
+        }
+        depthTexture?.Release();
+        depthTexture = null;
     }
 
     static void SaveImage(Format format, string path, byte[] data, int width, int height)
@@ -102,35 +151,7 @@ public class RenderResult : IDisposable
         return data;
     }
 
-    public string GetHtml()
-    {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < texture2Ds.Length; i++)
-        {
-            string temp = Guid.NewGuid().ToString();
-            Save($".cache/images/{temp}.png", i);
-            sb.Append($"<img class=\"result-preview\" style=\"padding:10px\" src=\".cache/images/{temp}.png\">");
-        }
-        if (depthTexture != null)
-        {
-            string temp = Guid.NewGuid().ToString();
-            SaveDepth($".cache/images/{temp}.png");
-            sb.Append($"<img class=\"result-preview\" style=\"padding:10px\" src=\".cache/images/{temp}.png\">");
-        }
-        return sb.ToString();
-    }
 
-    public void Dispose()
-    {
-        if (texture2Ds != null)
-        {
-            foreach (var texture2D in texture2Ds)
-                texture2D?.Release();
-            texture2Ds = null;
-        }
-        depthTexture?.Release();
-        depthTexture = null;
-    }
 
     ~RenderResult()
     {

@@ -123,7 +123,7 @@ float4 main(PSIn input) : SV_TARGET
              .WithDrawIndexed(6);
         //Console.WriteLine(mypipe.Render().GetHtml());
         mypipe.Save("test9.png");
-        RenderRecord.Combine(record2, mypipe);
+        //RenderRecord.Combine(record2, mypipe);
 
         noteDevice.Dispose();
     }

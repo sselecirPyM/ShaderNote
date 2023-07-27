@@ -11,7 +11,6 @@ namespace ShaderNote;
 public record RenderRecord
 {
     RenderRecordItem recordItem;
-    RenderRecordItem[] renderRecordItems;
 
     internal NoteDevice noteDevice;
 
@@ -37,6 +36,28 @@ public record RenderRecord
             commonSlot = new VariableSlot()
             {
                 File = file,
+                SlotName = name,
+                AsArgument = argument,
+            },
+            offset = slot,
+            PreviousRecord = this.recordItem
+        };
+        return this with { recordItem = recordItem };
+    }
+
+    public RenderRecord WithImage(int slot, RenderResult renderResult, int channel = 0, bool depthChannel = true, string name = null, bool argument = false)
+    {
+        var recordItem = new RenderRecordItem()
+        {
+            caseName = "RenderImage",
+            commonSlot = new VariableSlot()
+            {
+                Value = new ResultWrap()
+                {
+                    renderResult = renderResult,
+                    depthChannel = depthChannel,
+                    channel = channel,
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -318,54 +339,35 @@ public record RenderRecord
 
     public RenderResult Render()
     {
-        Span<Format> outputFormats1 = (outputFormats != null) ? outputFormats : stackalloc Format[1] { Format.R8G8B8A8_UNorm };
+        return new RenderResult()
+        {
+            noteDevice = noteDevice,
+            renderRecord = this,
+        };
+    }
+
+    internal void RenderTo(out ID3D11Texture2D[] texture2Ds, out ID3D11Texture2D depth)
+    {
+        var renderStates = new RenderStates();
+        var renderRecordItems = recordItem.GetList();
+        BeforeRenderList(renderRecordItems, renderStates);
 
         var device = noteDevice.device;
         var context = noteDevice.deviceContext;
 
-        ID3D11Texture2D[] texture2Ds = new ID3D11Texture2D[outputFormats1.Length];
+        Span<Format> outputFormats1 = outputFormats ?? (stackalloc Format[1] { Format.R8G8B8A8_UNorm });
+        texture2Ds = new ID3D11Texture2D[outputFormats1.Length];
         ID3D11RenderTargetView[] rtvs = new ID3D11RenderTargetView[outputFormats1.Length];
         for (int i = 0; i < outputFormats1.Length; i++)
         {
-            var texture2d = device.CreateTexture2D(Format.R8G8B8A8_UNorm, width, height, bindFlags: BindFlags.RenderTarget | BindFlags.ShaderResource);
-            var rtv = device.CreateRenderTargetView(texture2d);
-            texture2Ds[i] = texture2d;
-            rtvs[i] = rtv;
-            context.ClearRenderTargetView(rtv, new Vortice.Mathematics.Color4(ClearColor));
+            CreateRTV(outputFormats1[i], out texture2Ds[i], out rtvs[i]);
+            context.ClearRenderTargetView(rtvs[i], new Vortice.Mathematics.Color4(ClearColor));
         }
-        ID3D11Texture2D depth = null;
+        depth = null;
         ID3D11DepthStencilView dsv = null;
         if (depthStencilFormt != Format.Unknown)
         {
-            Format df1 = Format.Unknown;
-            switch (depthStencilFormt)
-            {
-                case Format.D16_UNorm:
-                    df1 = Format.R16_Typeless;
-                    break;
-                case Format.D24_UNorm_S8_UInt:
-                    df1 = Format.R24G8_Typeless;
-                    break;
-                case Format.D32_Float:
-                    df1 = Format.R32_Typeless;
-                    break;
-            }
-            Texture2DDescription texture2DDescription = new Texture2DDescription()
-            {
-                BindFlags = BindFlags.DepthStencil | BindFlags.ShaderResource,
-                Width = width,
-                Height = height,
-                Format = df1,
-                ArraySize = 1,
-                MipLevels = 1,
-                SampleDescription = SampleDescription.Default,
-            };
-            depth = device.CreateTexture2D(texture2DDescription);
-            dsv = device.CreateDepthStencilView(depth, new DepthStencilViewDescription()
-            {
-                ViewDimension = DepthStencilViewDimension.Texture2D,
-                Format = depthStencilFormt,
-            });
+            CreateDepth(depthStencilFormt, out depth, out dsv);
             context.ClearDepthStencilView(dsv, DepthStencilClearFlags.Depth | DepthStencilClearFlags.Stencil, 1.0f, 0);
         }
 
@@ -376,25 +378,74 @@ public record RenderRecord
         context.RSSetScissorRect(0, 0, width, height);
         //context.RSSetState(rasterizerState);
         context.OMSetRenderTargets(rtvs, dsv);
-        if (renderRecordItems != null)
-        {
-            foreach (var renderRecordItem in renderRecordItems)
-            {
-                renderRecordItem?.RunStateChain(noteDevice);
-            }
-        }
-        recordItem?.RunStateChain(noteDevice);
+
+        RenderList(renderRecordItems, renderStates);
 
         context.OMSetRenderTargets((ID3D11RenderTargetView)null);
+        context.OMSetDepthStencilState(null);
         dsv?.Release();
         foreach (var rtv in rtvs)
             rtv.Release();
-        return new RenderResult()
+        renderStates.Dispose();
+    }
+
+    void CreateRTV(Format format, out ID3D11Texture2D texture2d, out ID3D11RenderTargetView rtv)
+    {
+        var device = noteDevice.device;
+        texture2d = device.CreateTexture2D(format, width, height, bindFlags: BindFlags.RenderTarget | BindFlags.ShaderResource);
+        rtv = device.CreateRenderTargetView(texture2d);
+    }
+
+    void CreateDepth(Format format, out ID3D11Texture2D depthTexture, out ID3D11DepthStencilView dsv)
+    {
+        var device = noteDevice.device;
+        Texture2DDescription texture2DDescription = new Texture2DDescription()
         {
-            noteDevice = noteDevice,
-            texture2Ds = texture2Ds,
-            depthTexture = depth
+            BindFlags = BindFlags.DepthStencil | BindFlags.ShaderResource,
+            Width = width,
+            Height = height,
+            Format = D3D11Helper.GetResourceFormat(format),
+            ArraySize = 1,
+            MipLevels = 1,
+            SampleDescription = SampleDescription.Default,
         };
+        depthTexture = device.CreateTexture2D(texture2DDescription);
+        dsv = device.CreateDepthStencilView(depthTexture, new DepthStencilViewDescription()
+        {
+            ViewDimension = DepthStencilViewDimension.Texture2D,
+            Format = format,
+        });
+    }
+
+    void BeforeRenderList(List<RenderRecordItem> renderRecordItems, RenderStates renderStates)
+    {
+        for (int i = 0; i < renderRecordItems.Count; i++)
+        {
+            var cs = renderRecordItems[i].commonSlot;
+            if (cs != null && cs.AsArgument && !string.IsNullOrEmpty(cs.SlotName))
+            {
+                renderStates.SlotValue[cs.SlotName] = cs;
+            }
+        }
+        for (int i = 0; i < renderRecordItems.Count; i++)
+        {
+            var renderRecord = renderRecordItems[i];
+            renderRecord.BeforeRender(noteDevice, renderStates);
+        }
+    }
+
+    void RenderList(List<RenderRecordItem> renderRecordItems, RenderStates renderStates)
+    {
+        for (int i = 0; i < renderRecordItems.Count; i++)
+        {
+            var renderRecord = renderRecordItems[i];
+            var cs = renderRecordItems[i].commonSlot;
+            if (cs != null && cs.AsArgument)
+            {
+                continue;
+            }
+            renderRecord.SetState(noteDevice, renderStates);
+        }
     }
 
     public void Save(string path, int index = 0)
@@ -403,32 +454,5 @@ public record RenderRecord
 
         result.Save(path, index);
         result.Dispose();
-    }
-
-    public static RenderRecord Combine(IEnumerable<RenderRecord> renderRecords)
-    {
-        List<RenderRecordItem> renderRecordItems = new();
-        NoteDevice noteDevice = null;
-        foreach (var renderRecord in renderRecords)
-        {
-            noteDevice = renderRecord.noteDevice;
-            if (renderRecord.renderRecordItems != null)
-                renderRecordItems.AddRange(renderRecordItems);
-            if (renderRecord.recordItem != null)
-                renderRecordItems.Add(renderRecord.recordItem);
-        }
-        if (noteDevice == null)
-            throw new Exception("noteDevice can not be null.");
-
-        return new RenderRecord
-        {
-            noteDevice = noteDevice,
-            renderRecordItems = renderRecordItems.ToArray()
-        };
-    }
-
-    public static RenderRecord Combine(params RenderRecord[] renderRecords)
-    {
-        return Combine((IEnumerable<RenderRecord>)renderRecords);
     }
 }

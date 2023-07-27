@@ -1,10 +1,12 @@
 cbuffer cb : register(b0)
 {
     float4x4 mvp; 
+    float4x4 shadow; 
     float4 lightColor;
     float3 lightDir;
 }
 Texture2D<float4> texture0 : register(t0);
+Texture2D<float> shadowTexture : register(t1);
 SamplerState sampler0 : register(s0);
 
 struct PSIn
@@ -12,6 +14,7 @@ struct PSIn
     float4 position : SV_POSITION;
     float3 normal : NORMAL;
     float2 texcoord : TEXCOORD;
+    float3 shadowTex : TEXCOORD1;
 };
 struct Output
 {
@@ -23,7 +26,9 @@ struct Output
 
 Output main(PSIn input) : SV_TARGET
 {
-    float4 light=(saturate(dot(input.normal,lightDir))*0.5+0.5)*lightColor;
+    float shadowDepth=shadowTexture.Sample(sampler0,input.shadowTex.xy);
+    float inShadow=(shadowDepth+0.01f<input.shadowTex.z)?0.0f:1.0f;
+    float4 light=(saturate(dot(input.normal,lightDir))*0.5*inShadow+0.5)*lightColor;
     float4 tex1=texture0.Sample(sampler0,input.texcoord);
     Output output =
     {
