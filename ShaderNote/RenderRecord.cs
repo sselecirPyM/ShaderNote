@@ -45,7 +45,7 @@ public record RenderRecord
         return this with { recordItem = recordItem };
     }
 
-    public RenderRecord WithImage(int slot, RenderResult renderResult, int channel = 0, bool depthChannel = true, string name = null, bool argument = false)
+    public RenderRecord WithImage(int slot, RenderResult renderResult, int channel = -1, string name = null, bool argument = false)
     {
         var recordItem = new RenderRecordItem()
         {
@@ -55,7 +55,6 @@ public record RenderRecord
                 Value = new ResultWrap()
                 {
                     renderResult = renderResult,
-                    depthChannel = depthChannel,
                     channel = channel,
                 },
                 SlotName = name,

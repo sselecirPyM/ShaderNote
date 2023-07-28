@@ -74,8 +74,8 @@ ShaderData constantBuffer=new ShaderData
 #!csharp
 
 var render = noteDevice.GetRecord()
-    .WithVertexShader("Shaders/vs_3d.hlsl")
-    .WithPixelShader("Shaders/ps_3d.hlsl")
+    .WithVertexShader("Shaders/vs_3d_02.hlsl")
+    .WithPixelShader("Shaders/ps_3d_02.hlsl")
     .WithIndexBuffer(data: indices)
     .WithVertexBuffer(0, 12, data: positions)
     .WithVertexBuffer(1, 12, data: normals)

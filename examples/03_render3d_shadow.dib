@@ -15,10 +15,6 @@
 using Microsoft.DotNet.Interactive.Formatting;
 using ShaderNote;
 
-// Formatter.Register<RenderResult>((w)=>
-// {
-//     return w.GetHtml();
-// },HtmlFormatter.MimeType);
 Formatter.Register<RenderRecord>((w)=>
 {
     var result = w.Render();
@@ -94,8 +90,8 @@ shadowRender
 #!csharp
 
 var render = noteDevice.GetRecord()
-    .WithVertexShader("Shaders/vs_3d_shadow.hlsl")
-    .WithPixelShader("Shaders/ps_3d_shadow.hlsl")
+    .WithVertexShader("Shaders/vs_3d_03.hlsl")
+    .WithPixelShader("Shaders/ps_3d_03.hlsl")
     .WithIndexBuffer(data: indices)
     .WithVertexBuffer(0, 12, data: positions)
     .WithVertexBuffer(1, 12, data: normals)

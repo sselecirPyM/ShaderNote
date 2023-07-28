@@ -41,7 +41,6 @@ internal class RenderStates
 internal class ResultWrap
 {
     public RenderResult renderResult;
-    public bool depthChannel;
     public int channel;
 }
 
@@ -161,9 +160,9 @@ internal class RenderRecordItem
                     renderStates.trash.Add(renderResult);
                 renderResult.CheckRender();
 
-                if (wrap.depthChannel && renderResult.depthTexture != null)
+                if (wrap.channel == -1 && renderResult.depthTexture != null)
                 {
-                    var tex =renderResult.depthTexture;
+                    var tex = renderResult.depthTexture;
                     var texDesc = tex.Description;
                     var desc = new ShaderResourceViewDescription()
                     {
@@ -177,7 +176,7 @@ internal class RenderRecordItem
                     var srv = noteDevice.device.CreateShaderResourceView(tex, desc);
                     renderStates.TemporaryTexture.Add(offset, srv);
                 }
-                if (!wrap.depthChannel)
+                if (wrap.channel >= 0)
                 {
                     var tex = renderResult.texture2Ds[wrap.channel];
                     var texDesc = tex.Description;

@@ -2,6 +2,10 @@
 
 {"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"name":"csharp"}]}}
 
+#!markdown
+
+## Build Project
+
 #!pwsh
 
 dotnet build "../ShaderNote.sln"
@@ -12,6 +16,10 @@ dotnet build "../ShaderNote.sln"
 #r "nuget:Vortice.Direct3D11"
 #r "nuget:Vortice.D3DCompiler"
 #r "nuget:SixLabors.ImageSharp"
+
+#!markdown
+
+## Add Interactive Support
 
 #!csharp
 
@@ -25,6 +33,10 @@ Formatter.Register<RenderRecord>((w)=>
     result.Dispose();
     return html;
 },HtmlFormatter.MimeType);
+
+#!markdown
+
+## Render
 
 #!csharp
 
