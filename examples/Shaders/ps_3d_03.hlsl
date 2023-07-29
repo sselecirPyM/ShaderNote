@@ -30,6 +30,7 @@ Output main(PSIn input) : SV_TARGET
     float inShadow=(shadowDepth+0.01f<input.shadowTex.z)?0.0f:1.0f;
     float4 light=(saturate(dot(input.normal,lightDir))*0.5*inShadow+0.5)*lightColor;
     float4 tex1=texture0.Sample(sampler0,input.texcoord);
+    clip(tex1.a-0.01);
     Output output =
     {
         float4((tex1*light).rgb,tex1.a),

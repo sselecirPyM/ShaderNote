@@ -32,7 +32,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "Image",
+            caseName = RenderAction.Image,
             commonSlot = new VariableSlot()
             {
                 File = file,
@@ -49,7 +49,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "RenderImage",
+            caseName = RenderAction.RenderImage,
             commonSlot = new VariableSlot()
             {
                 Value = new ResultWrap()
@@ -73,7 +73,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "Sampler",
+            caseName = RenderAction.Sampler,
             commonSlot = new VariableSlot()
             {
                 Value = new SamplerDescription(filter, u, v, w, mipLODBias, maxAnisotropy, comparisonFunc, new Vortice.Mathematics.Color4(borderColor), minLOD, maxLOD),
@@ -90,7 +90,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "VertexBuffer",
+            caseName = RenderAction.VertexBuffer,
             commonSlot = new VariableSlot()
             {
                 File = file,
@@ -132,7 +132,7 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            caseName = "IndexBuffer",
+            caseName = RenderAction.IndexBuffer,
             commonSlot = new VariableSlot()
             {
                 File = file,
@@ -159,7 +159,7 @@ public record RenderRecord
             value = MemoryMarshal.AsBytes(data.AsSpan()).ToArray();
         var recordItem = new RenderRecordItem()
         {
-            caseName = "ConstantBuffer",
+            caseName = RenderAction.ConstantBuffer,
             commonSlot = new VariableSlot()
             {
                 File = file,
@@ -178,7 +178,7 @@ public record RenderRecord
         Span<T> array = stackalloc T[1] { data };
         var recordItem = new RenderRecordItem()
         {
-            caseName = "ConstantBuffer",
+            caseName = RenderAction.ConstantBuffer,
             commonSlot = new VariableSlot()
             {
                 Value = MemoryMarshal.AsBytes(array).ToArray(),
@@ -195,7 +195,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "InputLayout",
+            caseName = RenderAction.InputLayout,
             commonSlot = new VariableSlot()
             {
                 Value = inputElementDescriptions,
@@ -211,7 +211,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "PrimitiveTopology",
+            caseName = RenderAction.PrimitiveTopology,
             commonSlot = new VariableSlot()
             {
                 Value = primitiveTopology,
@@ -227,7 +227,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "VertexShader",
+            caseName = RenderAction.VertexShader,
             commonSlot = new VariableSlot()
             {
                 File = file,
@@ -246,7 +246,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "PixelShader",
+            caseName = RenderAction.PixelShader,
             commonSlot = new VariableSlot()
             {
                 File = file,
@@ -265,7 +265,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "DrawIndexedInstances",
+            caseName = RenderAction.DrawIndexedInstances,
             commonSlot = new VariableSlot()
             {
                 Value = new DrawIndexedInstances()
@@ -308,7 +308,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "BlendState",
+            caseName = RenderAction.BlendState,
             commonSlot = new VariableSlot()
             {
                 Value = blendDescription,
@@ -324,7 +324,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = "DepthStencil",
+            caseName = RenderAction.DepthStencil,
             commonSlot = new VariableSlot()
             {
                 Value = depthStencilDescription,

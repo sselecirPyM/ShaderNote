@@ -44,6 +44,24 @@ internal class ResultWrap
     public int channel;
 }
 
+internal enum RenderAction
+{
+    None = 0,
+    DrawIndexedInstances,
+    DepthStencil,
+    BlendState,
+    VertexShader,
+    PixelShader,
+    PrimitiveTopology,
+    InputLayout,
+    Sampler,
+    VertexBuffer,
+    IndexBuffer,
+    ConstantBuffer,
+    RenderImage,
+    Image
+}
+
 internal class RenderRecordItem
 {
     public int offset;
@@ -53,7 +71,7 @@ internal class RenderRecordItem
 
     public RenderRecordItem PreviousRecord;
 
-    public string caseName;
+    public RenderAction caseName;
     public VariableSlot commonSlot;
 
     internal List<RenderRecordItem> GetList()
@@ -82,7 +100,7 @@ internal class RenderRecordItem
 
         switch (caseName)
         {
-            case "DrawIndexedInstances":
+            case RenderAction.DrawIndexedInstances:
                 if (!renderStates.setInputLayout)
                 {
                     deviceContext.IASetInputLayout(noteDevice.GetInputLayout(renderStates.inputElementDescriptions, renderStates.vertexShader1));
@@ -97,52 +115,49 @@ internal class RenderRecordItem
                 var d = (DrawIndexedInstances)commonSlot.Value;
                 deviceContext.DrawIndexedInstanced(d.indexCountPerInstance, d.instanceCount, d.startIndexLocation, d.baseVertexLocation, d.startInstanceLocation);
                 break;
-            case "DepthStencil":
+            case RenderAction.DepthStencil:
                 deviceContext.OMSetDepthStencilState(noteDevice.GetDepthStencilState(commonSlot));
                 break;
-            case "BlendState":
+            case RenderAction.BlendState:
                 deviceContext.OMSetBlendState(noteDevice.GetBlendState(commonSlot));
                 break;
-            case "VertexShader":
+            case RenderAction.VertexShader:
                 deviceContext.VSSetShader(noteDevice.GetVertexShader(commonSlot));
                 renderStates.vertexShader1 = commonSlot;
                 break;
-            case "PixelShader":
+            case RenderAction.PixelShader:
                 deviceContext.PSSetShader(noteDevice.GetPixelShader(commonSlot));
                 break;
-            case "PrimitiveTopology":
+            case RenderAction.PrimitiveTopology:
                 renderStates.primitiveTopology = (PrimitiveTopology)commonSlot.Value;
                 deviceContext.IASetPrimitiveTopology(renderStates.primitiveTopology);
                 break;
-            case "InputLayout":
+            case RenderAction.InputLayout:
                 renderStates.setInputLayout = false;
                 renderStates.inputElementDescriptions = commonSlot;
                 break;
-            case "Sampler":
+            case RenderAction.Sampler:
                 deviceContext.PSSetSampler(offset, noteDevice.GetSampler(commonSlot));
                 break;
-            case "VertexBuffer":
+            case RenderAction.VertexBuffer:
                 deviceContext.IASetVertexBuffer(offset, noteDevice.GetBuffer(commonSlot, BindFlags.VertexBuffer), stride, 0);
                 break;
-            case "IndexBuffer":
+            case RenderAction.IndexBuffer:
                 deviceContext.IASetIndexBuffer(noteDevice.GetBuffer(commonSlot, BindFlags.IndexBuffer), (Format)commonSlot.Value1, offset);
                 break;
-            case "ConstantBuffer":
+            case RenderAction.ConstantBuffer:
                 var constnatBuffer = noteDevice.GetBuffer(commonSlot, BindFlags.ConstantBuffer);
                 deviceContext.VSSetConstantBuffer(offset, constnatBuffer);
                 deviceContext.PSSetConstantBuffer(offset, constnatBuffer);
                 break;
-            case "RenderImage":
+            case RenderAction.RenderImage:
                 if (renderStates.TemporaryTexture.TryGetValue(offset, out var texture))
                 {
                     deviceContext.PSSetShaderResource(offset, texture);
                 }
                 break;
-            case "Image":
+            case RenderAction.Image:
                 deviceContext.PSSetShaderResource(offset, noteDevice.GetImage(commonSlot.File));
-                break;
-            case "":
-            case null:
                 break;
             default:
                 throw new System.Exception();
@@ -153,7 +168,7 @@ internal class RenderRecordItem
     {
         switch (caseName)
         {
-            case "RenderImage":
+            case RenderAction.RenderImage:
                 var wrap = (ResultWrap)commonSlot.Value;
                 var renderResult = wrap.renderResult;
                 if (!renderResult.rendered)

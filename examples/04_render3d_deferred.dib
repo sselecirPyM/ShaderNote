@@ -25,15 +25,19 @@ Formatter.Register<RenderRecord>((w)=>
 
 #!csharp
 
+var texturePath = "../../kizunaai/";
+var pmxModelPath="../../kizunaai/kizunaai.pmx";
+
+#!csharp
+
 using ShaderNote;
-using System.Numerics;
 NoteDevice noteDevice = new NoteDevice();
 
 #!csharp
 
+using System.Numerics;
 using ShaderNote.ModelLoaders;
-var texturePath = "../../kizunaai/";
-PMXFormat pmx= PMXFormat.Load("../../kizunaai/kizunaai.pmx");
+PMXFormat pmx= PMXFormat.Load(pmxModelPath);
 
 var positions = pmx.Vertices.Select(u=>u.Coordinate).ToArray();
 var normals = pmx.Vertices.Select(u=>u.Normal).ToArray();
@@ -63,8 +67,8 @@ var shadowCenter=new Vector3(0,10,0);
 var shadowMatrix= Matrix4x4.CreateLookAt(lightDir*25+shadowCenter,shadowCenter, Vector3.UnitY)*
     Matrix4x4.CreateOrthographic(16,16,0,50);
 
-var vmat = Matrix4x4.CreateLookAt(new Vector3(0,10,-20),new Vector3(0,10,0), Vector3.UnitY);
-var pmat = Matrix4x4.CreatePerspectiveFieldOfView(60.0f/180.0f*MathF.PI,1.0f,1.0f,100.0f);
+var vmat = Matrix4x4.CreateLookAt(new Vector3(0,15,-10),new Vector3(0,15,0), Vector3.UnitY);
+var pmat = Matrix4x4.CreatePerspectiveFieldOfView(60.0f/180.0f*MathF.PI,1.0f,0.5f,100.0f);
 var vpmat=Matrix4x4.Multiply(vmat,pmat);
 Matrix4x4.Invert(vpmat,out Matrix4x4 inverseVP);
 
