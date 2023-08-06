@@ -27,7 +27,7 @@ internal class Program
             .WithIndexBuffer(data: new ushort[] { 0, 2, 1, 1, 2, 3 })
             .WithImage(0, "sample.png")
             .WithSampler(0)
-             .WithDrawIndexed(6);
+            .WithDrawIndexed(6);
 
         //var record3 = record2.WithPixelShader("Shaders/PixelShader.hlsl")
         //     .WithDrawIndexed(6);
@@ -60,7 +60,7 @@ internal class Program
                 new(1,1,0),
             }, name: "vb0", argument: true)
             .WithMRT(Vortice.DXGI.Format.R8G8B8A8_UNorm, Vortice.DXGI.Format.R8G8B8A8_UNorm)
-             .Save("test10.png", 0);
+            .Save("test10.png", 0);
 
         string shader3 =
 """
@@ -79,10 +79,10 @@ float4 main(PSIn input) : SV_TARGET
 }
 """;
 
-        //var recordX= record2.WithPixelShader(source: shader3)
-        //     .WithDrawIndexed(6);
-        //recordX
-        //     .Save("test3.png");
+        var recordX = record2.WithPixelShader(source: shader3)
+             .WithDrawIndexed(6);
+        recordX
+             .Save("test3.png");
 
         //recordX
         //     .Save("test4.png");

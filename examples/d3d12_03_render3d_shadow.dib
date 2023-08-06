@@ -1,0 +1,223 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!csharp
+
+#r "../ShaderNoteD3D12/bin/Debug/net7.0/ShaderNoteD3D12.dll"
+#r "../ShaderNote.ModelLoaders/bin/Debug/net7.0/ShaderNote.ModelLoaders.dll"
+#r "nuget:Vortice.Direct3D12"
+#r "nuget:Vortice.DXC"
+#r "nuget:SixLabors.ImageSharp"
+
+#!csharp
+
+using Microsoft.DotNet.Interactive.Formatting;
+using ShaderNoteD3D12;
+using System.Numerics;
+
+Formatter.Register<RenderRecord>((w)=>
+{
+    var result = w.Render();
+    string html = result.GetHtml();
+    result.Dispose();
+    return html;
+},HtmlFormatter.MimeType);
+
+#!csharp
+
+NoteDevice noteDevice = new NoteDevice();
+
+#!csharp
+
+using ShaderNote.ModelLoaders;
+var texturePath = "../../kizunaai/";
+var pmxModelPath="../../kizunaai/kizunaai.pmx";
+PMXFormat pmx= PMXFormat.Load(pmxModelPath);
+
+var positions = pmx.Vertices.Select(u=>u.Coordinate).ToArray();
+var normals = pmx.Vertices.Select(u=>u.Normal).ToArray();
+var uvs = pmx.Vertices.Select(u=>u.UvCoordinate).ToArray();
+var indices = pmx.TriangleIndexs;
+var materials=pmx.Materials;
+var textures=pmx.Textures;
+
+#!csharp
+
+using System.Numerics;
+using Vortice.DXGI;
+using Vortice.Direct3D12;
+using System.IO;
+public struct ShaderData
+{
+    public Matrix4x4 MVP;
+    public Matrix4x4 Shadow;
+    public Vector4 LightColor;
+    public Vector3 LightDir;
+}
+
+#!csharp
+
+var lightDir=Vector3.Normalize(new Vector3(0.05f,1,-0.3f));
+var shadowCenter=new Vector3(0,10,0);
+var shadowMatrix= Matrix4x4.Transpose(Matrix4x4.CreateLookAt(lightDir*25+shadowCenter,shadowCenter, Vector3.UnitY)*
+    Matrix4x4.CreateOrthographic(16,16,0,50));
+
+var vmat = Matrix4x4.CreateLookAt(new Vector3(0,15,-10),new Vector3(0,15,0), Vector3.UnitY);
+var pmat = Matrix4x4.CreatePerspectiveFieldOfView(60.0f/180.0f*MathF.PI,1.0f,1.0f,100.0f);
+
+ShaderData constantBuffer=new ShaderData
+{
+    MVP=Matrix4x4.Transpose(Matrix4x4.Multiply(vmat,pmat)),
+    Shadow=shadowMatrix,
+    LightColor = new Vector4(1,1,1,1),
+    LightDir = lightDir,
+};
+
+#!csharp
+
+var shadowRender = noteDevice.GetRecord()
+    .WithVertexShader("Shaders/vs_shadow.hlsl")
+    .WithIndexBuffer(data: indices)
+    .WithVertexBuffer(0, 12, data: positions)
+    .WithConstantBuffer(0,shadowMatrix)
+    .WithMRT()
+    .WithDepth()
+    .WithDrawIndexed(indices.Length);
+
+shadowRender
+
+#!csharp
+
+var render = noteDevice.GetRecord()
+    .WithVertexShader("Shaders/vs_3d_03.hlsl")
+    .WithPixelShader("Shaders/ps_3d_03.hlsl")
+    .WithIndexBuffer(data: indices)
+    .WithVertexBuffer(0, 12, data: positions)
+    .WithVertexBuffer(1, 12, data: normals)
+    .WithVertexBuffer(2, 8, data: uvs)
+    .WithSampler(0)
+    .WithConstantBuffer(0,constantBuffer)
+    .WithBlendState(BlendDescription.AlphaBlend)
+    .WithImage(1,shadowRender.Render());
+
+foreach (var material in materials)
+{
+    render = render
+        .WithImage(0,file:Path.Combine(texturePath,textures[material.TextureIndex].TexturePath))
+        .WithDrawIndexed(material.TriangeIndexNum,startIndexLocation:material.TriangeIndexStartNum);
+}
+render=render
+    .WithMRT(Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm)
+    .WithDepth();
+
+//View Result
+render
+
+#!csharp
+
+RenderHelper.GIF((frame)=>{
+    var lightDir=Vector3.Normalize(new Vector3(0.05f,1-frame*0.2f,-0.3f));
+    var shadowCenter=new Vector3(0,10,0);
+    var shadowMatrix= Matrix4x4.Transpose(Matrix4x4.CreateLookAt(lightDir*25+shadowCenter,shadowCenter,Vector3.Cross(Vector3.Cross(lightDir,Vector3.UnitY),lightDir))*
+        Matrix4x4.CreateOrthographic(16,16,0,50));
+
+    var vmat = Matrix4x4.CreateLookAt(new Vector3(0,15,-10),new Vector3(0,15,0), Vector3.UnitY);
+    var pmat = Matrix4x4.CreatePerspectiveFieldOfView(60.0f/180.0f*MathF.PI,1.0f,1.0f,100.0f);
+
+    ShaderData constantBuffer=new ShaderData
+    {
+        MVP=Matrix4x4.Transpose(Matrix4x4.Multiply(vmat,pmat)),
+        Shadow=shadowMatrix,
+        LightColor = new Vector4(1,1,1,1),
+        LightDir = lightDir,
+    };
+
+    var shadowRender = noteDevice.GetRecord()
+    .WithVertexShader("Shaders/vs_shadow.hlsl")
+    .WithIndexBuffer(data: indices)
+    .WithVertexBuffer(0, 12, data: positions)
+    .WithConstantBuffer(0,shadowMatrix)
+    .WithMRT()
+    .WithDepth()
+    .WithDrawIndexed(indices.Length);
+    
+    var render = noteDevice.GetRecord()
+    .WithVertexShader("Shaders/vs_3d_03.hlsl")
+    .WithPixelShader("Shaders/ps_3d_03.hlsl")
+    .WithIndexBuffer(data: indices)
+    .WithVertexBuffer(0, 12, data: positions)
+    .WithVertexBuffer(1, 12, data: normals)
+    .WithVertexBuffer(2, 8, data: uvs)
+    .WithSampler(0)
+    .WithConstantBuffer(0,constantBuffer)
+    .WithBlendState(BlendDescription.AlphaBlend)
+    .WithImage(1,shadowRender.Render());
+
+    foreach (var material in materials)
+    {
+        render = render
+            .WithImage(0,file:Path.Combine(texturePath,textures[material.TextureIndex].TexturePath))
+            .WithDrawIndexed(material.TriangeIndexNum,startIndexLocation:material.TriangeIndexStartNum);
+    }
+    render=render
+        .WithMRT(Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm)
+        .WithDepth();
+
+    return render;
+},".cache/03.gif",256,256,16,frameDelay:20);
+"<img src='.cache/03.gif'>".DisplayAs("text/html");
+
+#!csharp
+
+// RenderHelper.Mp4((frame)=>{
+//     var lightDir=Vector3.Normalize(new Vector3(0.05f,1-frame*0.02f,-0.3f));
+//     var shadowCenter=new Vector3(0,10,0);
+//     var shadowMatrix= Matrix4x4.Transpose(Matrix4x4.CreateLookAt(lightDir*25+shadowCenter,shadowCenter,Vector3.Cross(Vector3.Cross(lightDir,Vector3.UnitY),lightDir))*
+//         Matrix4x4.CreateOrthographic(16,16,0,50));
+
+//     var vmat = Matrix4x4.CreateLookAt(new Vector3(0,15,-10),new Vector3(0,15,0), Vector3.UnitY);
+//     var pmat = Matrix4x4.CreatePerspectiveFieldOfView(60.0f/180.0f*MathF.PI,1.0f,1.0f,100.0f);
+
+//     ShaderData constantBuffer=new ShaderData
+//     {
+//         MVP=Matrix4x4.Transpose(Matrix4x4.Multiply(vmat,pmat)),
+//         Shadow=shadowMatrix,
+//         LightColor = new Vector4(1,1,1,1),
+//         LightDir = lightDir,
+//     };
+
+//     var shadowRender = noteDevice.GetRecord()
+//     .WithVertexShader("Shaders/vs_shadow.hlsl")
+//     .WithIndexBuffer(data: indices)
+//     .WithVertexBuffer(0, 12, data: positions)
+//     .WithConstantBuffer(0,shadowMatrix)
+//     .WithMRT()
+//     .WithDepth()
+//     .WithDrawIndexed(indices.Length);
+    
+//     var render = noteDevice.GetRecord()
+//     .WithVertexShader("Shaders/vs_3d_03.hlsl")
+//     .WithPixelShader("Shaders/ps_3d_03.hlsl")
+//     .WithIndexBuffer(data: indices)
+//     .WithVertexBuffer(0, 12, data: positions)
+//     .WithVertexBuffer(1, 12, data: normals)
+//     .WithVertexBuffer(2, 8, data: uvs)
+//     .WithSampler(0)
+//     .WithConstantBuffer(0,constantBuffer)
+//     .WithBlendState(BlendDescription.AlphaBlend)
+//     .WithImage(1,shadowRender.Render());
+
+//     foreach (var material in materials)
+//     {
+//         render = render
+//             .WithImage(0,file:Path.Combine(texturePath,textures[material.TextureIndex].TexturePath))
+//             .WithDrawIndexed(material.TriangeIndexNum,startIndexLocation:material.TriangeIndexStartNum);
+//     }
+//     render=render
+//         .WithMRT(Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm)
+//         .WithDepth();
+
+//     return render;
+// },".cache/03.mp4",256,256,120,frameRate:30);
+// "<video controls><source src='.cache/03.mp4' type='video/mp4'></video>".DisplayAs("text/html");

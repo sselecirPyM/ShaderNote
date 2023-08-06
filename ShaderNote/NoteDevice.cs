@@ -64,18 +64,18 @@ public class NoteDevice : IDisposable
         SamplerLRUCache.Deactivating += (_, e) => e.Value.Release();
     }
 
+    private void Watcher_Changed(object sender, FileSystemEventArgs e)
+    {
+        LRUCache.InvalidCache(Path.GetFullPath(e.FullPath));
+        ShaderLRUCache.InvalidCache(Path.GetFullPath(e.FullPath));
+    }
+
     private void LRUCache_Deactivating(object sender, LRUCacheEventArgs<string, object> e)
     {
         if (e.Value is ComObject com)
         {
             com.Release();
         }
-    }
-
-    private void Watcher_Changed(object sender, FileSystemEventArgs e)
-    {
-        LRUCache.InvalidCache(Path.GetFullPath(e.FullPath));
-        ShaderLRUCache.InvalidCache(Path.GetFullPath(e.FullPath));
     }
 
     public RenderRecord GetRecord()
@@ -156,7 +156,7 @@ public class NoteDevice : IDisposable
         return null;
     }
 
-    internal byte[] GetVertexShaderByteCode(VariableSlot variableSlot)
+    internal byte[] GetShaderByteCode(VariableSlot variableSlot, string profile)
     {
         if (variableSlot.Value != null && variableSlot.Value is string source)
         {
@@ -164,7 +164,7 @@ public class NoteDevice : IDisposable
 
             return ShaderLRUCache.GetObject(variableSlot.ShortCut, (key) =>
             {
-                return CompileShader(source, variableSlot.EntryPoint, null, "vs_5_0");
+                return CompileShader(source, variableSlot.EntryPoint, null, profile);
             }) as byte[];
         }
 
@@ -172,24 +172,25 @@ public class NoteDevice : IDisposable
         return ShaderLRUCache.GetObject(sourcePath, (key) =>
         {
             var source = File.ReadAllText(sourcePath);
-            return CompileShader(source, variableSlot.EntryPoint, sourcePath, "vs_5_0");
+            return CompileShader(source, variableSlot.EntryPoint, sourcePath, profile);
         }) as byte[];
+    }
+    internal byte[] GetVertexShaderByteCode(VariableSlot variableSlot)
+    {
+        return GetShaderByteCode(variableSlot, "vs_5_0");
+    }
+    internal byte[] GetPixelShaderByteCode(VariableSlot variableSlot)
+    {
+        return GetShaderByteCode(variableSlot, "ps_5_0");
     }
 
     internal ID3D11VertexShader GetVertexShader(VariableSlot variableSlot)
     {
-        if (variableSlot.Value != null && variableSlot.Value is string source)
-        {
+        if (variableSlot.Value is string source)
             variableSlot.ShortCut ??= GetHashShortCut(source);
-
-            return LRUCache.GetObject(variableSlot.ShortCut, (key) =>
-            {
-                return device.CreateVertexShader(GetVertexShaderByteCode(variableSlot));
-            }) as ID3D11VertexShader;
-        }
-
-        var sourcePath = Path.GetFullPath(variableSlot.File);
-        return LRUCache.GetObject(sourcePath, (key) =>
+        else
+            variableSlot.ShortCut ??= Path.GetFullPath(variableSlot.File);
+        return LRUCache.GetObject(variableSlot.ShortCut, (key) =>
         {
             return device.CreateVertexShader(GetVertexShaderByteCode(variableSlot));
         }) as ID3D11VertexShader;
@@ -197,21 +198,13 @@ public class NoteDevice : IDisposable
 
     internal ID3D11PixelShader GetPixelShader(VariableSlot variableSlot)
     {
-        if (variableSlot.Value != null && variableSlot.Value is string source)
-        {
+        if (variableSlot.Value is string source)
             variableSlot.ShortCut ??= GetHashShortCut(source);
-
-            return ShaderLRUCache.GetObject(variableSlot.ShortCut, (key) =>
-            {
-                return device.CreatePixelShader(CompileShader(source, variableSlot.EntryPoint, variableSlot.Value1 as string, "ps_5_0"));
-            }) as ID3D11PixelShader;
-        }
-
-        var sourcePath = Path.GetFullPath(variableSlot.File);
-        return ShaderLRUCache.GetObject(sourcePath, (key) =>
+        else
+            variableSlot.ShortCut ??= Path.GetFullPath(variableSlot.File);
+        return ShaderLRUCache.GetObject(variableSlot.ShortCut, (key) =>
         {
-            var source = File.ReadAllText(sourcePath);
-            return device.CreatePixelShader(CompileShader(source, variableSlot.EntryPoint, sourcePath, "ps_5_0"));
+            return device.CreatePixelShader(GetPixelShaderByteCode(variableSlot));
         }) as ID3D11PixelShader;
     }
 
@@ -232,37 +225,43 @@ public class NoteDevice : IDisposable
             {
                 using var reflection = Compiler.Reflect<ID3D11ShaderReflection>(GetVertexShaderByteCode(vertexShader));
 
-                int count1 = 0;
-                foreach (var item in reflection.InputParameters)
-                    if (item.SystemValueType == SystemValueType.Undefined)
-                        count1++;
-                var inputElementDescriptions = new InputElementDescription[count1];
-                int count = 0;
-
-                foreach (var item in reflection.InputParameters)
-                {
-                    if (item.SystemValueType == SystemValueType.Undefined)
-                    {
-                        Format format = Format.Unknown;
-                        if (item.ComponentType == RegisterComponentType.Float32)
-                        {
-                            if ((item.UsageMask & RegisterComponentMaskFlags.ComponentW) != 0)
-                                format = Format.R32G32B32A32_Float;
-                            else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentZ) != 0)
-                                format = Format.R32G32B32_Float;
-                            else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentY) != 0)
-                                format = Format.R32G32_Float;
-                            else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentX) != 0)
-                                format = Format.R32_Float;
-                        }
-                        inputElementDescriptions[count] = new InputElementDescription(item.SemanticName, item.SemanticIndex, format, count);
-                        count++;
-                    }
-                }
+                var inputElementDescriptions = GetInputElementDescriptions(reflection);
                 return device.CreateInputLayout(inputElementDescriptions, GetVertexShaderByteCode(vertexShader));
             }) as ID3D11InputLayout;
         }
     }
+    static InputElementDescription[] GetInputElementDescriptions(ID3D11ShaderReflection reflection)
+    {
+        int count1 = 0;
+        foreach (var item in reflection.InputParameters)
+            if (item.SystemValueType == SystemValueType.Undefined)
+                count1++;
+        var descs = new InputElementDescription[count1];
+
+        int count = 0;
+        foreach (var item in reflection.InputParameters)
+        {
+            if (item.SystemValueType == SystemValueType.Undefined)
+            {
+                Format format = Format.Unknown;
+                if (item.ComponentType == RegisterComponentType.Float32)
+                {
+                    if ((item.UsageMask & RegisterComponentMaskFlags.ComponentW) != 0)
+                        format = Format.R32G32B32A32_Float;
+                    else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentZ) != 0)
+                        format = Format.R32G32B32_Float;
+                    else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentY) != 0)
+                        format = Format.R32G32_Float;
+                    else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentX) != 0)
+                        format = Format.R32_Float;
+                }
+                descs[count] = new InputElementDescription(item.SemanticName, item.SemanticIndex, format, count);
+                count++;
+            }
+        }
+        return descs;
+    }
+
 
     internal ID3D11BlendState GetBlendState(VariableSlot variableSlot)
     {

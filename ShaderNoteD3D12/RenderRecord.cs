@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Vortice.Direct3D;
-using Vortice.Direct3D11;
+using Vortice.Direct3D12;
 using Vortice.DXGI;
 
-namespace ShaderNote;
+namespace ShaderNoteD3D12;
 
 public record RenderRecord
 {
@@ -21,6 +21,8 @@ public record RenderRecord
     Format depthStencilFormt;
 
     Vector4 ClearColor = Vector4.Zero;
+    //Vector4 ClearColor = Vector4.One;
+    //Vector4 ClearColor = new Vector4(0, 0, 1, 1);
 
     internal RenderRecord()
     {
@@ -261,7 +263,8 @@ public record RenderRecord
         return this with { recordItem = recordItem };
     }
 
-    public RenderRecord WithDrawIndexed(int indexCountPerInstance, int instanceCount = 1, int startIndexLocation = 0, int baseVertexLocation = 0, int startInstanceLocation = 0, string name = null, bool argument = false)
+    public RenderRecord WithDrawIndexed(int indexCountPerInstance, int instanceCount = 1, int startIndexLocation = 0, int baseVertexLocation = 0, int startInstanceLocation = 0,
+        string name = null, bool argument = false)
     {
         var recordItem = new RenderRecordItem()
         {
@@ -289,7 +292,7 @@ public record RenderRecord
         return this with { outputFormats = formats.AsSpan().ToArray(), };
     }
 
-    public RenderRecord WithDepth(Format format = Format.D16_UNorm)
+    public RenderRecord WithDepth(Format format = Format.D24_UNorm_S8_UInt)
     {
         return this with { depthStencilFormt = format, };
     }
@@ -345,75 +348,91 @@ public record RenderRecord
         };
     }
 
-    internal void RenderTo(out ID3D11Texture2D[] texture2Ds, out ID3D11Texture2D depth)
+    internal void RenderTo(out Texture2D[] texture2Ds, out Texture2D depth)
     {
         var renderStates = new RenderStates();
         var renderRecordItems = GetRenderList();
         BeforeRenderList(renderRecordItems, renderStates);
 
-        var device = noteDevice.device;
-        var context = noteDevice.deviceContext;
+        noteDevice.Begin();
+        var commandList = noteDevice.commandList;
 
-        Span<Format> outputFormats1 = outputFormats ?? (stackalloc Format[1] { Format.R8G8B8A8_UNorm });
-        texture2Ds = new ID3D11Texture2D[outputFormats1.Length];
-        ID3D11RenderTargetView[] rtvs = new ID3D11RenderTargetView[outputFormats1.Length];
+        Format[] outputFormats1 = outputFormats ?? new Format[1] { Format.R8G8B8A8_UNorm };
+        renderStates.formats = outputFormats1;
+        ID3D12Resource[] texture2Ds1 = new ID3D12Resource[outputFormats1.Length];
+        CpuDescriptorHandle[] rtvs = new CpuDescriptorHandle[outputFormats1.Length];
         for (int i = 0; i < outputFormats1.Length; i++)
         {
-            CreateRTV(outputFormats1[i], out texture2Ds[i], out rtvs[i]);
-            context.ClearRenderTargetView(rtvs[i], new Vortice.Mathematics.Color4(ClearColor));
+            CreateRTV(outputFormats1[i], out texture2Ds1[i], out rtvs[i]);
+            commandList.ClearRenderTargetView(rtvs[i], new Vortice.Mathematics.Color4(ClearColor));
         }
-        depth = null;
-        ID3D11DepthStencilView dsv = null;
+        CpuDescriptorHandle dsv = default;
+        ID3D12Resource depth1 = null;
         if (depthStencilFormt != Format.Unknown)
         {
-            CreateDepth(depthStencilFormt, out depth, out dsv);
-            context.ClearDepthStencilView(dsv, DepthStencilClearFlags.Depth | DepthStencilClearFlags.Stencil, 1.0f, 0);
+            renderStates.depthFormat = depthStencilFormt;
+            CreateDepth(depthStencilFormt, out depth1, out dsv);
+            commandList.ClearDepthStencilView(dsv, ClearFlags.Depth | ClearFlags.Stencil, 1.0f, 0);
         }
 
 
-        //var rasterizerState = device.CreateRasterizerState(new RasterizerDescription(CullMode.Back, FillMode.Solid) { ScissorEnable = false });
-        context.ClearState();
-        context.RSSetViewport(0, 0, width, height);
-        context.RSSetScissorRect(0, 0, width, height);
-        //context.RSSetState(rasterizerState);
-        context.OMSetRenderTargets(rtvs, dsv);
+        //commandList.ClearState(null);
+        commandList.RSSetViewport(0, 0, width, height);
+        commandList.RSSetScissorRect(new Vortice.RawRect(0, 0, width, height));
+        if (dsv != default)
+            commandList.OMSetRenderTargets(rtvs, dsv);
+        else
+            commandList.OMSetRenderTargets(rtvs);
 
         RenderList(renderRecordItems, renderStates);
 
-        context.OMSetRenderTargets((ID3D11RenderTargetView)null);
-        context.OMSetDepthStencilState(null);
-        dsv?.Release();
-        foreach (var rtv in rtvs)
-            rtv.Release();
+        commandList.OMSetRenderTargets(null);
+        texture2Ds = new Texture2D[texture2Ds1.Length];
+        for (int i = 0; i < texture2Ds1.Length; i++)
+            texture2Ds[i] = new Texture2D { resource = texture2Ds1[i], resourceState = ResourceStates.RenderTarget };
+        depth = (depth1 == null) ? null : new Texture2D() { resource = depth1, resourceState = ResourceStates.DepthWrite };
+
+
         renderStates.Dispose();
+        noteDevice.Execute();
     }
 
-    void CreateRTV(Format format, out ID3D11Texture2D texture2d, out ID3D11RenderTargetView rtv)
+    void CreateRTV(Format format, out ID3D12Resource texture, out CpuDescriptorHandle srv)
     {
-        var device = noteDevice.device;
-        texture2d = device.CreateTexture2D(format, width, height, bindFlags: BindFlags.RenderTarget | BindFlags.ShaderResource);
-        rtv = device.CreateRenderTargetView(texture2d);
-    }
-
-    void CreateDepth(Format format, out ID3D11Texture2D depthTexture, out ID3D11DepthStencilView dsv)
-    {
-        var device = noteDevice.device;
-        Texture2DDescription texture2DDescription = new Texture2DDescription()
+        texture = noteDevice.device.CreateCommittedResource(HeapType.Default, new ResourceDescription()
         {
-            BindFlags = BindFlags.DepthStencil | BindFlags.ShaderResource,
-            Width = width,
+            Width = (uint)width,
             Height = height,
-            Format = D3D11Helper.GetResourceFormat(format),
-            ArraySize = 1,
+            Dimension = ResourceDimension.Texture2D,
+            Format = format,
+            DepthOrArraySize = 1,
+            Flags = ResourceFlags.AllowRenderTarget,
             MipLevels = 1,
-            SampleDescription = SampleDescription.Default,
-        };
-        depthTexture = device.CreateTexture2D(texture2DDescription);
-        dsv = device.CreateDepthStencilView(depthTexture, new DepthStencilViewDescription()
+            SampleDescription = SampleDescription.Default
+        }, ResourceStates.RenderTarget);
+        srv = noteDevice.rtv.GetTempCpuHandle();
+        noteDevice.device.CreateRenderTargetView(texture, null, srv);
+    }
+
+    void CreateDepth(Format format, out ID3D12Resource texture, out CpuDescriptorHandle dsv)
+    {
+        texture = noteDevice.device.CreateCommittedResource(HeapType.Default, new ResourceDescription()
+        {
+            Width = (uint)width,
+            Height = height,
+            Dimension = ResourceDimension.Texture2D,
+            Format = D3D12Helper.GetResourceFormat(format),
+            DepthOrArraySize = 1,
+            Flags = ResourceFlags.AllowDepthStencil,
+            MipLevels = 1,
+            SampleDescription = SampleDescription.Default
+        }, ResourceStates.DepthWrite);
+        dsv = noteDevice.dsv.GetTempCpuHandle();
+        noteDevice.device.CreateDepthStencilView(texture, new DepthStencilViewDescription()
         {
             ViewDimension = DepthStencilViewDimension.Texture2D,
             Format = format,
-        });
+        }, dsv);
     }
 
     internal List<RenderRecordItem> GetRenderList()

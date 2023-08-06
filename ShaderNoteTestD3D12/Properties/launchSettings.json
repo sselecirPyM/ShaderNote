@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ShaderNoteTestD3D12": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}

@@ -1,0 +1,97 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!csharp
+
+#r "../ShaderNoteD3D12/bin/Debug/net7.0/ShaderNoteD3D12.dll"
+#r "../ShaderNote.ModelLoaders/bin/Debug/net7.0/ShaderNote.ModelLoaders.dll"
+#r "nuget:Vortice.Direct3D12"
+#r "nuget:Vortice.DXC"
+#r "nuget:SixLabors.ImageSharp"
+
+#!csharp
+
+using Microsoft.DotNet.Interactive.Formatting;
+using ShaderNoteD3D12;
+using System.Numerics;
+
+// Formatter.Register<RenderResult>((w)=>
+// {
+//     return w.GetHtml();
+// },HtmlFormatter.MimeType);
+Formatter.Register<RenderRecord>((w)=>
+{
+    var result = w.Render();
+    string html = result.GetHtml();
+    result.Dispose();
+    return html;
+},HtmlFormatter.MimeType);
+
+#!csharp
+
+NoteDevice noteDevice = new NoteDevice();
+
+#!csharp
+
+using ShaderNote.ModelLoaders;
+var texturePath = "../../kizunaai/";
+PMXFormat pmx= PMXFormat.Load("../../kizunaai/kizunaai.pmx");
+
+var positions = pmx.Vertices.Select(u=>u.Coordinate).ToArray();
+var normals = pmx.Vertices.Select(u=>u.Normal).ToArray();
+var uvs = pmx.Vertices.Select(u=>u.UvCoordinate).ToArray();
+var indices = pmx.TriangleIndexs;
+var materials=pmx.Materials;
+var textures=pmx.Textures;
+
+#!csharp
+
+using System.Numerics;
+using Vortice.DXGI;
+using Vortice.Direct3D12;
+using System.IO;
+public struct ShaderData
+{
+    public Matrix4x4 MVP;
+    public Vector4 LightColor;
+    public Vector3 LightDir;
+}
+
+#!csharp
+
+var vmat = Matrix4x4.CreateLookAt(new Vector3(0,10,-20),new Vector3(0,10,0), Vector3.UnitY);
+var pmat = Matrix4x4.CreatePerspectiveFieldOfView(60.0f/180.0f*MathF.PI,1.0f,1.0f,100.0f);
+
+ShaderData constantBuffer=new ShaderData
+{
+    MVP=Matrix4x4.Transpose( Matrix4x4.Multiply( vmat,pmat)),
+    LightColor = new Vector4(1,1,1,1),
+    LightDir = Vector3.Normalize( new Vector3(0,1,-0.5f)),
+};
+
+#!csharp
+
+var render = noteDevice.GetRecord()
+    .WithVertexShader("Shaders/vs_3d_02.hlsl")
+    .WithPixelShader("Shaders/ps_3d_02.hlsl")
+    .WithIndexBuffer(data: indices)
+    .WithVertexBuffer(0, 12, data: positions)
+    .WithVertexBuffer(1, 12, data: normals)
+    .WithVertexBuffer(2, 8, data: uvs)
+    .WithSampler(0)
+    .WithConstantBuffer(0,constantBuffer)
+    .WithBlendState(BlendDescription.AlphaBlend);
+
+var renderRecords=new List<RenderRecord>();
+foreach (var material in materials)
+{
+    render = render
+        .WithImage(0,file:Path.Combine(texturePath,textures[material.TextureIndex].TexturePath))
+        .WithDrawIndexed(material.TriangeIndexNum,startIndexLocation:material.TriangeIndexStartNum);
+}
+render=render
+    .WithMRT(Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm,Format.R8G8B8A8_UNorm)
+    .WithDepth();
+//View Result
+render
