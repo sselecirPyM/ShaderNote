@@ -204,7 +204,7 @@ public class NoteDevice : IDisposable
             reflection = null;
             return null;
         }
-        using var result = DxcCompiler.Compile(shaderStage, File.ReadAllText(variableSlot.File), variableSlot.EntryPoint, fileName: Path.GetFullPath(variableSlot.File));
+        using var result = DxcCompiler.Compile(shaderStage, File.ReadAllText(variableSlot.File), variableSlot.EntryPoint, fileName: variableSlot.File);
         reflection = DxcCompiler.Utils.CreateReflection<ID3D12ShaderReflection>(result.GetOutput(DxcOutKind.Reflection));
         return result.GetObjectBytecodeArray();
     }

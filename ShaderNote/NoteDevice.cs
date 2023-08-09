@@ -3,9 +3,6 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text;
 using Vortice.D3DCompiler;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
@@ -138,10 +135,9 @@ public class NoteDevice : IDisposable
     {
         if (variableSlot.Value != null)
         {
-            var data = (byte[])variableSlot.Value;
-            variableSlot.ShortCut ??= GetHashShortCut(data);
             return LRUCache.GetObject(variableSlot.ShortCut, (key) =>
             {
+                var data = (byte[])variableSlot.Value;
                 return device.CreateBuffer(data, bindFlags, sizeInBytes: (data.Length + 64) / 64 * 64);
             }) as ID3D11Buffer;
         }
@@ -160,8 +156,6 @@ public class NoteDevice : IDisposable
     {
         if (variableSlot.Value != null && variableSlot.Value is string source)
         {
-            variableSlot.ShortCut ??= GetHashShortCut(source);
-
             return ShaderLRUCache.GetObject(variableSlot.ShortCut, (key) =>
             {
                 return CompileShader(source, variableSlot.EntryPoint, null, profile);
@@ -186,10 +180,6 @@ public class NoteDevice : IDisposable
 
     internal ID3D11VertexShader GetVertexShader(VariableSlot variableSlot)
     {
-        if (variableSlot.Value is string source)
-            variableSlot.ShortCut ??= GetHashShortCut(source);
-        else
-            variableSlot.ShortCut ??= Path.GetFullPath(variableSlot.File);
         return LRUCache.GetObject(variableSlot.ShortCut, (key) =>
         {
             return device.CreateVertexShader(GetVertexShaderByteCode(variableSlot));
@@ -198,10 +188,6 @@ public class NoteDevice : IDisposable
 
     internal ID3D11PixelShader GetPixelShader(VariableSlot variableSlot)
     {
-        if (variableSlot.Value is string source)
-            variableSlot.ShortCut ??= GetHashShortCut(source);
-        else
-            variableSlot.ShortCut ??= Path.GetFullPath(variableSlot.File);
         return ShaderLRUCache.GetObject(variableSlot.ShortCut, (key) =>
         {
             return device.CreatePixelShader(GetPixelShaderByteCode(variableSlot));
@@ -213,7 +199,6 @@ public class NoteDevice : IDisposable
         if (descs != null)
         {
             var inputElementDescriptions = (InputElementDescription[])descs.Value;
-            descs.ShortCut ??= ObjectShortCut(inputElementDescriptions);
 
             return ShaderLRUCache.GetObject(descs.ShortCut, key =>
             device.CreateInputLayout(inputElementDescriptions, GetVertexShaderByteCode(vertexShader))) as ID3D11InputLayout;
@@ -265,8 +250,6 @@ public class NoteDevice : IDisposable
 
     internal ID3D11BlendState GetBlendState(VariableSlot variableSlot)
     {
-        variableSlot.ShortCut ??= "blend_state_" + ((BlendDescription)variableSlot.Value).GetHashCode().ToString();
-
         return ShaderLRUCache.GetObject(variableSlot.ShortCut, (key) =>
         {
             return device.CreateBlendState((BlendDescription)variableSlot.Value);
@@ -275,37 +258,10 @@ public class NoteDevice : IDisposable
 
     internal ID3D11DepthStencilState GetDepthStencilState(VariableSlot variableSlot)
     {
-        variableSlot.ShortCut ??= "depth_stencil_" + ((DepthStencilDescription)variableSlot.Value).GetHashCode().ToString();
-
         return ShaderLRUCache.GetObject(variableSlot.ShortCut, (key) =>
         {
             return device.CreateDepthStencilState((DepthStencilDescription)variableSlot.Value);
         }) as ID3D11DepthStencilState;
-    }
-
-    string ObjectShortCut<T>(T[] source)
-    {
-        Span<int> hashCodes = stackalloc int[source.Length];
-        for (int i = 0; i < source.Length; i++)
-            hashCodes[i] = source[i].GetHashCode();
-
-        Span<byte> buffer = stackalloc byte[32];
-        SHA256.TryHashData(MemoryMarshal.AsBytes(hashCodes), buffer, out int bytesWritten);
-        return new Guid(buffer.Slice(0, 16)).ToString();
-    }
-
-    string GetHashShortCut(string source)
-    {
-        Span<byte> buffer = stackalloc byte[32];
-        SHA256.TryHashData(Encoding.UTF8.GetBytes(source), buffer, out int bytesWritten);
-        return new Guid(buffer.Slice(0, 16)).ToString();
-    }
-
-    string GetHashShortCut<T>(T[] source) where T : unmanaged
-    {
-        Span<byte> buffer = stackalloc byte[32];
-        SHA256.TryHashData(MemoryMarshal.AsBytes(source.AsSpan()), buffer, out int bytesWritten);
-        return new Guid(buffer.Slice(0, 16)).ToString();
     }
 
     static byte[] CompileShader(string shaderSource, string entryPoint, string sourceName, string profile)

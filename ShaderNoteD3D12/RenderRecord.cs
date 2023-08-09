@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using Vortice.Direct3D;
 using Vortice.Direct3D12;
 using Vortice.DXGI;
@@ -32,12 +35,17 @@ public record RenderRecord
 
     public RenderRecord WithImage(int slot, string file = null, string name = null, bool argument = false)
     {
+        string shortCut = null;
+        if (file != null)
+            shortCut ??= Path.GetFullPath(file);
+
         var recordItem = new RenderRecordItem()
         {
             caseName = RenderAction.Image,
             commonSlot = new VariableSlot()
             {
-                File = file,
+                File = (file == null) ? null : shortCut,
+                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -88,15 +96,21 @@ public record RenderRecord
         return this with { recordItem = recordItem };
     }
 
-    public RenderRecord WithVertexBuffer<T>(int slot = 0, int stride = 0, string file = null, T[] data = null, string name = null, bool argument = false) where T : unmanaged
+    public RenderRecord WithVertexBuffer<T>(int slot = 0, int stride = 0, T[] data = null, string name = null, bool argument = false) where T : unmanaged
     {
+        byte[] bytes = MemoryMarshal.AsBytes(data.AsSpan()).ToArray();
+
+        string shortCut = null;
+        if (bytes != null)
+            shortCut ??= GetHashShortCut(bytes);
+
         var recordItem = new RenderRecordItem()
         {
             caseName = RenderAction.VertexBuffer,
             commonSlot = new VariableSlot()
             {
-                File = file,
-                Value = MemoryMarshal.AsBytes(data.AsSpan()).ToArray(),
+                Value = bytes,
+                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -131,13 +145,18 @@ public record RenderRecord
                     break;
             }
         }
+        string shortCut = null;
+        if (data1 != null)
+            shortCut ??= GetHashShortCut(data1);
+        if (file != null)
+            shortCut ??= Path.GetFullPath(file);
 
         var recordItem = new RenderRecordItem()
         {
             caseName = RenderAction.IndexBuffer,
             commonSlot = new VariableSlot()
             {
-                File = file,
+                File = (file == null) ? null : shortCut,
                 Value = data1,
                 Value1 = byteWidth switch
                 {
@@ -146,6 +165,7 @@ public record RenderRecord
                     4 => Format.R32_UInt,
                     _ => Format.Unknown
                 },
+                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -154,18 +174,35 @@ public record RenderRecord
         return this with { recordItem = recordItem };
     }
 
-    public RenderRecord WithConstantBuffer<T>(int slot, string file = null, T[] data = null, string name = null, bool argument = false) where T : unmanaged
+    public RenderRecord WithConstantBuffer(int slot, string file, string name = null, bool argument = false)
     {
-        object value = null;
-        if (data != null)
-            value = MemoryMarshal.AsBytes(data.AsSpan()).ToArray();
         var recordItem = new RenderRecordItem()
         {
             caseName = RenderAction.ConstantBuffer,
             commonSlot = new VariableSlot()
             {
-                File = file,
-                Value = value,
+                File = (file == null) ? null : Path.GetFullPath(file),
+                ShortCut = (file == null) ? null : Path.GetFullPath(file),
+                SlotName = name,
+                AsArgument = argument,
+            },
+            offset = slot,
+            PreviousRecord = this.recordItem
+        };
+        return this with { recordItem = recordItem };
+    }
+
+    public RenderRecord WithConstantBuffer<T>(int slot, T[] data, string name = null, bool argument = false) where T : unmanaged
+    {
+        byte[] bytes = MemoryMarshal.AsBytes(data.AsSpan()).ToArray();
+        string shortCut = GetHashShortCut(bytes);
+        var recordItem = new RenderRecordItem()
+        {
+            caseName = RenderAction.ConstantBuffer,
+            commonSlot = new VariableSlot()
+            {
+                Value = bytes,
+                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -178,12 +215,15 @@ public record RenderRecord
     public RenderRecord WithConstantBuffer<T>(int slot, T data = default, string name = null, bool argument = false) where T : unmanaged
     {
         Span<T> array = stackalloc T[1] { data };
+        byte[] bytes = MemoryMarshal.AsBytes(array).ToArray();
+        string shortCut = GetHashShortCut(bytes);
         var recordItem = new RenderRecordItem()
         {
             caseName = RenderAction.ConstantBuffer,
             commonSlot = new VariableSlot()
             {
-                Value = MemoryMarshal.AsBytes(array).ToArray(),
+                Value = bytes,
+                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -195,12 +235,14 @@ public record RenderRecord
 
     public RenderRecord WithInputLayout(InputElementDescription[] inputElementDescriptions, string name = null, bool argument = false)
     {
+        string shortCut = (inputElementDescriptions == null) ? null : ObjectShortCut(inputElementDescriptions);
         var recordItem = new RenderRecordItem()
         {
             caseName = RenderAction.InputLayout,
             commonSlot = new VariableSlot()
             {
                 Value = inputElementDescriptions,
+                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -227,15 +269,22 @@ public record RenderRecord
 
     public RenderRecord WithVertexShader(string file = null, string source = null, string sourcePath = null, string entryPoint = "main", string name = null, bool argument = false)
     {
+        string shortCut = null;
+        if (file != null)
+            shortCut = Path.GetFullPath(file);
+        if (source != null)
+            shortCut ??= GetHashShortCut(source);
+
         var recordItem = new RenderRecordItem()
         {
             caseName = RenderAction.VertexShader,
             commonSlot = new VariableSlot()
             {
-                File = file,
+                File = (file == null) ? null : shortCut,
                 Value = source,
                 Value1 = sourcePath,
                 EntryPoint = entryPoint,
+                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -246,15 +295,22 @@ public record RenderRecord
 
     public RenderRecord WithPixelShader(string file = null, string source = null, string sourcePath = null, string entryPoint = "main", string name = null, bool argument = false)
     {
+        string shortCut = null;
+        if (file != null)
+            shortCut = Path.GetFullPath(file);
+        if (source != null)
+            shortCut ??= GetHashShortCut(source);
+
         var recordItem = new RenderRecordItem()
         {
             caseName = RenderAction.PixelShader,
             commonSlot = new VariableSlot()
             {
-                File = file,
+                File = (file == null) ? null : shortCut,
                 Value = source,
                 Value1 = sourcePath,
                 EntryPoint = entryPoint,
+                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -263,8 +319,7 @@ public record RenderRecord
         return this with { recordItem = recordItem };
     }
 
-    public RenderRecord WithDrawIndexed(int indexCountPerInstance, int instanceCount = 1, int startIndexLocation = 0, int baseVertexLocation = 0, int startInstanceLocation = 0,
-        string name = null, bool argument = false)
+    public RenderRecord WithDrawIndexed(int indexCountPerInstance, int instanceCount = 1, int startIndexLocation = 0, int baseVertexLocation = 0, int startInstanceLocation = 0, string name = null, bool argument = false)
     {
         var recordItem = new RenderRecordItem()
         {
@@ -309,12 +364,14 @@ public record RenderRecord
 
     public RenderRecord WithBlendState(BlendDescription blendDescription, string name = null, bool argument = false)
     {
+        string shortCut = "blend_state_" + blendDescription.GetHashCode().ToString();
         var recordItem = new RenderRecordItem()
         {
             caseName = RenderAction.BlendState,
             commonSlot = new VariableSlot()
             {
                 Value = blendDescription,
+                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -325,12 +382,14 @@ public record RenderRecord
 
     public RenderRecord WithDepthStencilState(DepthStencilDescription depthStencilDescription, string name = null, bool argument = false)
     {
+        string shortCut = "depth_stencil_" + depthStencilDescription.GetHashCode().ToString();
         var recordItem = new RenderRecordItem()
         {
             caseName = RenderAction.DepthStencil,
             commonSlot = new VariableSlot()
             {
                 Value = depthStencilDescription,
+                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -485,5 +544,30 @@ public record RenderRecord
 
         result.Save(path, index);
         result.Dispose();
+    }
+
+    static string ObjectShortCut<T>(T[] source)
+    {
+        Span<int> hashCodes = stackalloc int[source.Length];
+        for (int i = 0; i < source.Length; i++)
+            hashCodes[i] = source[i].GetHashCode();
+
+        Span<byte> buffer = stackalloc byte[32];
+        SHA256.TryHashData(MemoryMarshal.AsBytes(hashCodes), buffer, out int bytesWritten);
+        return new Guid(buffer.Slice(0, 16)).ToString();
+    }
+
+    static string GetHashShortCut(string source)
+    {
+        Span<byte> buffer = stackalloc byte[32];
+        SHA256.TryHashData(Encoding.UTF8.GetBytes(source), buffer, out int bytesWritten);
+        return new Guid(buffer.Slice(0, 16)).ToString();
+    }
+
+    static string GetHashShortCut<T>(T[] source) where T : unmanaged
+    {
+        Span<byte> buffer = stackalloc byte[32];
+        SHA256.TryHashData(MemoryMarshal.AsBytes(source.AsSpan()), buffer, out int bytesWritten);
+        return new Guid(buffer.Slice(0, 16)).ToString();
     }
 }
