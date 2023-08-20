@@ -25,16 +25,28 @@ public class NoteDevice : IDisposable
     FileSystemWatcher watcher;
     public NoteDevice(int LRUCapacity = 256, bool debug = true)
     {
-        LRUCache = new(LRUCapacity, equalityComparer: StringComparer.InvariantCultureIgnoreCase);
-        ShaderLRUCache = new(LRUCapacity, equalityComparer: StringComparer.InvariantCultureIgnoreCase);
-        SamplerLRUCache = new(LRUCapacity);
-
         D3D11CreateDevice(null, DriverType.Hardware, debug ? DeviceCreationFlags.Debug : DeviceCreationFlags.None, null, out var _device, out var _deviceContext).CheckError();
 
         device = _device.QueryInterface<ID3D11Device5>();
         ReleaseComPtr(ref _device);
         deviceContext = _deviceContext.QueryInterface<ID3D11DeviceContext4>();
         ReleaseComPtr(ref _deviceContext);
+
+        InitResources(LRUCapacity);
+    }
+    public NoteDevice(ID3D11Device device, ID3D11DeviceContext deviceContext, int LRUCapacity = 256)
+    {
+        this.device = device.QueryInterface<ID3D11Device5>();
+        this.deviceContext = deviceContext.QueryInterface<ID3D11DeviceContext4>();
+
+        InitResources(LRUCapacity);
+    }
+
+    private void InitResources(int LRUCapacity)
+    {
+        LRUCache = new(LRUCapacity, equalityComparer: StringComparer.InvariantCultureIgnoreCase);
+        ShaderLRUCache = new(LRUCapacity, equalityComparer: StringComparer.InvariantCultureIgnoreCase);
+        SamplerLRUCache = new(LRUCapacity);
 
         watcher = new FileSystemWatcher("./")
         {
@@ -194,24 +206,30 @@ public class NoteDevice : IDisposable
         }) as ID3D11PixelShader;
     }
 
-    internal ID3D11InputLayout GetInputLayout(VariableSlot descs, VariableSlot vertexShader)
+    internal ID3D11InputLayout GetInputLayout(VariableSlot descs, VariableSlot vertexShader, out InputElementDescription[] inputElements)
     {
         if (descs != null)
         {
-            var inputElementDescriptions = (InputElementDescription[])descs.Value;
+            inputElements = (InputElementDescription[])descs.Value;
+            var elements1 = inputElements;
 
             return ShaderLRUCache.GetObject(descs.ShortCut, key =>
-            device.CreateInputLayout(inputElementDescriptions, GetVertexShaderByteCode(vertexShader))) as ID3D11InputLayout;
+            device.CreateInputLayout(elements1, GetVertexShaderByteCode(vertexShader))) as ID3D11InputLayout;
         }
         else
         {
             string vertexShaderKey = vertexShader.ShortCut ?? vertexShader.File;
-            return ShaderLRUCache.GetObject("layout_" + vertexShaderKey, key =>
+            inputElements = ShaderLRUCache.GetObject("input_elements_" + vertexShaderKey, key =>
             {
                 using var reflection = Compiler.Reflect<ID3D11ShaderReflection>(GetVertexShaderByteCode(vertexShader));
 
                 var inputElementDescriptions = GetInputElementDescriptions(reflection);
-                return device.CreateInputLayout(inputElementDescriptions, GetVertexShaderByteCode(vertexShader));
+                return inputElementDescriptions;
+            }) as InputElementDescription[];
+            var elements1 = inputElements;
+            return ShaderLRUCache.GetObject("layout_" + vertexShaderKey, key =>
+            {
+                return device.CreateInputLayout(elements1, GetVertexShaderByteCode(vertexShader));
             }) as ID3D11InputLayout;
         }
     }
@@ -231,14 +249,53 @@ public class NoteDevice : IDisposable
                 Format format = Format.Unknown;
                 if (item.ComponentType == RegisterComponentType.Float32)
                 {
-                    if ((item.UsageMask & RegisterComponentMaskFlags.ComponentW) != 0)
-                        format = Format.R32G32B32A32_Float;
-                    else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentZ) != 0)
-                        format = Format.R32G32B32_Float;
-                    else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentY) != 0)
-                        format = Format.R32G32_Float;
-                    else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentX) != 0)
-                        format = Format.R32_Float;
+                    if (item.MinPrecision == MinPrecision.MinPrecisionFloat16)
+                    {
+                        if ((item.UsageMask & RegisterComponentMaskFlags.ComponentW) != 0)
+                            format = Format.R16G16B16A16_Float;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentZ) != 0)
+                            format = Format.R16G16B16A16_Float;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentY) != 0)
+                            format = Format.R16G16_Float;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentX) != 0)
+                            format = Format.R16_Float;
+                    }
+                    else
+                    {
+                        if ((item.UsageMask & RegisterComponentMaskFlags.ComponentW) != 0)
+                            format = Format.R32G32B32A32_Float;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentZ) != 0)
+                            format = Format.R32G32B32_Float;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentY) != 0)
+                            format = Format.R32G32_Float;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentX) != 0)
+                            format = Format.R32_Float;
+                    }
+                }
+                else if (item.ComponentType == RegisterComponentType.UInt32)
+                {
+                    if (item.MinPrecision == MinPrecision.MinPrecisionUInt16)
+                    {
+                        if ((item.UsageMask & RegisterComponentMaskFlags.ComponentW) != 0)
+                            format = Format.R16G16B16A16_UInt;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentZ) != 0)
+                            format = Format.R16G16B16A16_UInt;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentY) != 0)
+                            format = Format.R16G16_UInt;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentX) != 0)
+                            format = Format.R16_UInt;
+                    }
+                    else
+                    {
+                        if ((item.UsageMask & RegisterComponentMaskFlags.ComponentW) != 0)
+                            format = Format.R32G32B32A32_UInt;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentZ) != 0)
+                            format = Format.R32G32B32_UInt;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentY) != 0)
+                            format = Format.R32G32_UInt;
+                        else if ((item.UsageMask & RegisterComponentMaskFlags.ComponentX) != 0)
+                            format = Format.R32_UInt;
+                    }
                 }
                 descs[count] = new InputElementDescription(item.SemanticName, item.SemanticIndex, format, count);
                 count++;
@@ -247,6 +304,43 @@ public class NoteDevice : IDisposable
         return descs;
     }
 
+    internal void SetPipelineState(RenderStates renderStates)
+    {
+        if (renderStates.inputLayoutChanged)
+        {
+            deviceContext.IASetInputLayout(GetInputLayout(renderStates.inputElementDescriptions, renderStates.vertexShader1, out var inputElements));
+            renderStates.currentInputElements = inputElements;
+
+            renderStates.inputLayoutChanged = false;
+            renderStates.vertexBufferChanged = true;
+        }
+        if (renderStates.vertexBufferChanged && renderStates.currentInputElements != null)
+        {
+            for (int i = 0; i < renderStates.currentInputElements.Length; i++)
+            {
+                InputElementDescription element = renderStates.currentInputElements[i];
+                int slot = i;
+                if (element.Slot != -1)
+                    slot = element.Slot;
+
+                if (renderStates.vertexBuffers.TryGetValue(element.SemanticName + element.SemanticIndex, out var variable))
+                {
+                    var buffer = GetBuffer(variable, BindFlags.VertexBuffer);
+                    deviceContext.IASetVertexBuffer(slot, buffer, (int)variable.Value1, 0);
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine(string.Format("Vertext Buffer '{0}' not found.", element.SemanticName + element.SemanticIndex));
+                }
+            }
+            renderStates.vertexBufferChanged = false;
+        }
+        if (renderStates.primitiveTopology == PrimitiveTopology.Undefined)
+        {
+            renderStates.primitiveTopology = PrimitiveTopology.TriangleList;
+            deviceContext.IASetPrimitiveTopology(renderStates.primitiveTopology);
+        }
+    }
 
     internal ID3D11BlendState GetBlendState(VariableSlot variableSlot)
     {

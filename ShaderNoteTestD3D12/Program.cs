@@ -20,7 +20,7 @@ using System;
 //            .WithVertexShader("Shaders/VertexShader.hlsl", name: "vs")
 //            .WithPixelShader("Shaders/PixelShader.hlsl", name: "ps")
 //            .WithConstantBuffer(0, new Vector4(1, 0, 1, 1))
-//            .WithVertexBuffer(0, 12, data: new Vector3[]
+//            .WithVertexBuffer("POSITION0", 12, data: new Vector3[]
 //            {
 //                new(0,0,0),
 //                new(1,0,0),
@@ -97,7 +97,7 @@ internal class Program
         var shadowRender = noteDevice.GetRecord()
             .WithVertexShader("Shaders/vs_shadow.hlsl")
             .WithIndexBuffer(data: indices)
-            .WithVertexBuffer(0, 12, data: positions)
+            .WithVertexBuffer("POSITION0", 12, data: positions)
             .WithConstantBuffer(0, shadowMatrix)
             .WithMRT()
             .WithDepth()
@@ -110,9 +110,9 @@ internal class Program
 .WithVertexShader("Shaders/vs_3d_03.hlsl")
 .WithPixelShader("Shaders/ps_3d_03.hlsl")
 .WithIndexBuffer(data: indices)
-.WithVertexBuffer(0, 12, data: positions)
-.WithVertexBuffer(1, 12, data: normals)
-.WithVertexBuffer(2, 8, data: uvs)
+.WithVertexBuffer("POSITION0", 12, data: positions)
+.WithVertexBuffer("NORMAL0", 12, data: normals)
+.WithVertexBuffer("TEXCOORD0", 8, data: uvs)
 .WithSampler(0)
 .WithConstantBuffer(0, constantBuffer)
 .WithBlendState(BlendDescription.AlphaBlend)
@@ -154,7 +154,7 @@ internal class Program
             var shadowRender = noteDevice.GetRecord()
             .WithVertexShader("Shaders/vs_shadow.hlsl")
             .WithIndexBuffer(data: indices)
-            .WithVertexBuffer(0, 12, data: positions)
+            .WithVertexBuffer("POSITION0", 12, data: positions)
             .WithConstantBuffer(0, shadowMatrix)
             .WithMRT()
             .WithDepth()
@@ -164,9 +164,9 @@ internal class Program
             .WithVertexShader("Shaders/vs_3d_03.hlsl")
             .WithPixelShader("Shaders/ps_3d_03.hlsl")
             .WithIndexBuffer(data: indices)
-            .WithVertexBuffer(0, 12, data: positions)
-            .WithVertexBuffer(1, 12, data: normals)
-            .WithVertexBuffer(2, 8, data: uvs)
+            .WithVertexBuffer("POSITION0", 12, data: positions)
+            .WithVertexBuffer("NORMAL0", 12, data: normals)
+            .WithVertexBuffer("TEXCOORD0", 8, data: uvs)
             .WithSampler(0)
             .WithConstantBuffer(0, constantBuffer)
             .WithBlendState(BlendDescription.AlphaBlend)

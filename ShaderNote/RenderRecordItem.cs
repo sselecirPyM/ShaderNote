@@ -20,8 +20,12 @@ internal class RenderStates
 
     public Dictionary<string, VariableSlot> SlotValue = new();
 
-    public bool setInputLayout;
+    public bool inputLayoutChanged;
+    public bool vertexBufferChanged;
     public VariableSlot inputElementDescriptions;
+    public InputElementDescription[] currentInputElements;
+
+    public Dictionary<string, VariableSlot> vertexBuffers = new();
 
     public Dictionary<RenderRecordItem, ID3D11ShaderResourceView> TemporaryTexture = new();
     public List<RenderResult> trash = new();
@@ -69,9 +73,11 @@ internal class RenderRecordItem
     public int[] strides;
     public int[] offsets;
 
+    public string bindSlot;
+
     public RenderRecordItem PreviousRecord;
 
-    public RenderAction caseName;
+    public RenderAction renderAction;
     public VariableSlot commonSlot;
 
     internal void SetState(NoteDevice noteDevice, RenderStates renderStates)
@@ -85,19 +91,10 @@ internal class RenderRecordItem
             commonSlot = replaceSlot;
         }
 
-        switch (caseName)
+        switch (renderAction)
         {
             case RenderAction.DrawIndexedInstances:
-                if (!renderStates.setInputLayout)
-                {
-                    deviceContext.IASetInputLayout(noteDevice.GetInputLayout(renderStates.inputElementDescriptions, renderStates.vertexShader1));
-                    renderStates.setInputLayout = true;
-                }
-                if (renderStates.primitiveTopology == PrimitiveTopology.Undefined)
-                {
-                    renderStates.primitiveTopology = PrimitiveTopology.TriangleList;
-                    deviceContext.IASetPrimitiveTopology(renderStates.primitiveTopology);
-                }
+                noteDevice.SetPipelineState(renderStates);
 
                 var d = (DrawIndexedInstances)commonSlot.Value;
                 deviceContext.DrawIndexedInstanced(d.indexCountPerInstance, d.instanceCount, d.startIndexLocation, d.baseVertexLocation, d.startInstanceLocation);
@@ -111,6 +108,7 @@ internal class RenderRecordItem
             case RenderAction.VertexShader:
                 deviceContext.VSSetShader(noteDevice.GetVertexShader(commonSlot));
                 renderStates.vertexShader1 = commonSlot;
+                renderStates.inputLayoutChanged = true;
                 break;
             case RenderAction.PixelShader:
                 deviceContext.PSSetShader(noteDevice.GetPixelShader(commonSlot));
@@ -120,14 +118,15 @@ internal class RenderRecordItem
                 deviceContext.IASetPrimitiveTopology(renderStates.primitiveTopology);
                 break;
             case RenderAction.InputLayout:
-                renderStates.setInputLayout = false;
                 renderStates.inputElementDescriptions = commonSlot;
+                renderStates.inputLayoutChanged = true;
                 break;
             case RenderAction.Sampler:
                 deviceContext.PSSetSampler(offset, noteDevice.GetSampler(commonSlot));
                 break;
             case RenderAction.VertexBuffer:
-                deviceContext.IASetVertexBuffer(offset, noteDevice.GetBuffer(commonSlot, BindFlags.VertexBuffer), stride, 0);
+                renderStates.vertexBuffers[bindSlot] = commonSlot;
+                renderStates.vertexBufferChanged = true;
                 break;
             case RenderAction.IndexBuffer:
                 deviceContext.IASetIndexBuffer(noteDevice.GetBuffer(commonSlot, BindFlags.IndexBuffer), (Format)commonSlot.Value1, offset);
@@ -153,7 +152,7 @@ internal class RenderRecordItem
 
     internal void BeforeRender(NoteDevice noteDevice, RenderStates renderStates)
     {
-        switch (caseName)
+        switch (renderAction)
         {
             case RenderAction.RenderImage:
                 var wrap = (ResultWrap)commonSlot.Value;

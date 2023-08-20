@@ -48,14 +48,14 @@ var render = noteDevice.GetRecord()
     .WithVertexShader("Shaders/VertexShader.hlsl")
     .WithPixelShader("Shaders/PixelShader.hlsl")
     .WithIndexBuffer(data: new ushort[] { 0, 2, 1, 1, 2, 3 })
-    .WithVertexBuffer(0, 12, data: new Vector3[]
+    .WithVertexBuffer("POSITION0", 12, data: new Vector3[]
     {
         new(0,0,0),
         new(1,0,0),
         new(0,1,0),
         new(1,1,0),
     })
-    .WithVertexBuffer(1, 8, data: new Vector2[]
+    .WithVertexBuffer("TEXCOORD0", 8, data: new Vector2[]
     {
         new(0,0),
         new(1,0),

@@ -28,9 +28,10 @@ internal class RenderStates
 
     public Dictionary<string, VariableSlot> SlotValue = new();
 
-    public bool setInputLayout;
     public VariableSlot inputElementDescriptions;
+    public InputElementDescription[] currentInputElements;
 
+    public Dictionary<string, VariableSlot> vertexBuffers = new();
     public Dictionary<int, GpuDescriptorHandle> CBV = new();
     public Dictionary<int, GpuDescriptorHandle> SRV = new();
     public Dictionary<int, SamplerDescription> sampler = new();
@@ -39,6 +40,7 @@ internal class RenderStates
     public RootParameter1[] currentRootDescriptor = new RootParameter1[0];
 
     public bool pipelineChange;
+    public bool vertexBufferChanged;
 
     public void Dispose()
     {
@@ -77,10 +79,11 @@ internal class RenderRecordItem
     public int stride;
     public int[] strides;
     public int[] offsets;
+    public string bindSlot;
 
     public RenderRecordItem PreviousRecord;
 
-    public RenderAction caseName;
+    public RenderAction renderAction;
     public VariableSlot commonSlot;
 
     internal void SetState(NoteDevice noteDevice, RenderStates renderStates)
@@ -94,21 +97,10 @@ internal class RenderRecordItem
             commonSlot = replaceSlot;
         }
 
-        switch (caseName)
+        switch (renderAction)
         {
             case RenderAction.DrawIndexedInstances:
-                if (renderStates.pipelineChange)
-                {
-                    var pipelineState = noteDevice.GetPipelineState(renderStates);
-
-                    commandList.SetPipelineState(pipelineState);
-                }
-                if (renderStates.primitiveTopology == PrimitiveTopology.Undefined)
-                {
-                    renderStates.primitiveTopology = PrimitiveTopology.TriangleList;
-                    commandList.IASetPrimitiveTopology(renderStates.primitiveTopology);
-                }
-                noteDevice.BindResources(renderStates);
+                noteDevice.SetPipelineState(renderStates);
 
                 var d = (DrawIndexedInstances)commonSlot.Value;
                 commandList.DrawIndexedInstanced(d.indexCountPerInstance, d.instanceCount, d.startIndexLocation, d.baseVertexLocation, d.startInstanceLocation);
@@ -134,8 +126,8 @@ internal class RenderRecordItem
                 commandList.IASetPrimitiveTopology(renderStates.primitiveTopology);
                 break;
             case RenderAction.InputLayout:
-                renderStates.setInputLayout = false;
                 renderStates.inputElementDescriptions = commonSlot;
+                renderStates.pipelineChange = true;
                 break;
             case RenderAction.Sampler:
                 renderStates.sampler[offset] = (SamplerDescription)commonSlot.Value;
@@ -143,8 +135,11 @@ internal class RenderRecordItem
                 break;
             case RenderAction.VertexBuffer:
                 {
-                    ulong addr = noteDevice.GetBuffer(commonSlot);
-                    commandList.IASetVertexBuffers(offset, new VertexBufferView(addr, ((byte[])commonSlot.Value).Length, stride));
+                    renderStates.vertexBuffers[bindSlot] = commonSlot;
+                    renderStates.vertexBufferChanged = true;
+
+                    //ulong addr = noteDevice.GetBuffer(commonSlot);
+                    //commandList.IASetVertexBuffers(offset, new VertexBufferView(addr, ((byte[])commonSlot.Value).Length, stride));
                 }
                 break;
             case RenderAction.IndexBuffer:
@@ -180,7 +175,7 @@ internal class RenderRecordItem
 
     internal void BeforeRender(NoteDevice noteDevice, RenderStates renderStates)
     {
-        switch (caseName)
+        switch (renderAction)
         {
             case RenderAction.RenderImage:
                 var wrap = (ResultWrap)commonSlot.Value;

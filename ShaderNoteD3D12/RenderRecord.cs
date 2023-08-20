@@ -41,7 +41,7 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.Image,
+            renderAction = RenderAction.Image,
             commonSlot = new VariableSlot()
             {
                 File = (file == null) ? null : shortCut,
@@ -59,7 +59,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.RenderImage,
+            renderAction = RenderAction.RenderImage,
             commonSlot = new VariableSlot()
             {
                 Value = new ResultWrap()
@@ -83,7 +83,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.Sampler,
+            renderAction = RenderAction.Sampler,
             commonSlot = new VariableSlot()
             {
                 Value = new SamplerDescription(filter, u, v, w, mipLODBias, maxAnisotropy, comparisonFunc, new Vortice.Mathematics.Color4(borderColor), minLOD, maxLOD),
@@ -96,7 +96,7 @@ public record RenderRecord
         return this with { recordItem = recordItem };
     }
 
-    public RenderRecord WithVertexBuffer<T>(int slot = 0, int stride = 0, T[] data = null, string name = null, bool argument = false) where T : unmanaged
+    public RenderRecord WithVertexBuffer<T>(string slot = "POSITION0", int stride = 0, T[] data = null, string name = null, bool argument = false) where T : unmanaged
     {
         byte[] bytes = MemoryMarshal.AsBytes(data.AsSpan()).ToArray();
 
@@ -106,16 +106,17 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.VertexBuffer,
+            renderAction = RenderAction.VertexBuffer,
             commonSlot = new VariableSlot()
             {
                 Value = bytes,
+                Value1 = stride,
                 ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
             stride = stride,
-            offset = slot,
+            bindSlot = slot,
             PreviousRecord = this.recordItem
         };
         return this with { recordItem = recordItem };
@@ -153,7 +154,7 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.IndexBuffer,
+            renderAction = RenderAction.IndexBuffer,
             commonSlot = new VariableSlot()
             {
                 File = (file == null) ? null : shortCut,
@@ -178,7 +179,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.ConstantBuffer,
+            renderAction = RenderAction.ConstantBuffer,
             commonSlot = new VariableSlot()
             {
                 File = (file == null) ? null : Path.GetFullPath(file),
@@ -198,7 +199,7 @@ public record RenderRecord
         string shortCut = GetHashShortCut(bytes);
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.ConstantBuffer,
+            renderAction = RenderAction.ConstantBuffer,
             commonSlot = new VariableSlot()
             {
                 Value = bytes,
@@ -219,7 +220,7 @@ public record RenderRecord
         string shortCut = GetHashShortCut(bytes);
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.ConstantBuffer,
+            renderAction = RenderAction.ConstantBuffer,
             commonSlot = new VariableSlot()
             {
                 Value = bytes,
@@ -238,7 +239,7 @@ public record RenderRecord
         string shortCut = (inputElementDescriptions == null) ? null : ObjectShortCut(inputElementDescriptions);
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.InputLayout,
+            renderAction = RenderAction.InputLayout,
             commonSlot = new VariableSlot()
             {
                 Value = inputElementDescriptions,
@@ -255,7 +256,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.PrimitiveTopology,
+            renderAction = RenderAction.PrimitiveTopology,
             commonSlot = new VariableSlot()
             {
                 Value = primitiveTopology,
@@ -277,7 +278,7 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.VertexShader,
+            renderAction = RenderAction.VertexShader,
             commonSlot = new VariableSlot()
             {
                 File = (file == null) ? null : shortCut,
@@ -303,7 +304,7 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.PixelShader,
+            renderAction = RenderAction.PixelShader,
             commonSlot = new VariableSlot()
             {
                 File = (file == null) ? null : shortCut,
@@ -323,7 +324,7 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.DrawIndexedInstances,
+            renderAction = RenderAction.DrawIndexedInstances,
             commonSlot = new VariableSlot()
             {
                 Value = new DrawIndexedInstances()
@@ -367,7 +368,7 @@ public record RenderRecord
         string shortCut = "blend_state_" + blendDescription.GetHashCode().ToString();
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.BlendState,
+            renderAction = RenderAction.BlendState,
             commonSlot = new VariableSlot()
             {
                 Value = blendDescription,
@@ -385,7 +386,7 @@ public record RenderRecord
         string shortCut = "depth_stencil_" + depthStencilDescription.GetHashCode().ToString();
         var recordItem = new RenderRecordItem()
         {
-            caseName = RenderAction.DepthStencil,
+            renderAction = RenderAction.DepthStencil,
             commonSlot = new VariableSlot()
             {
                 Value = depthStencilDescription,

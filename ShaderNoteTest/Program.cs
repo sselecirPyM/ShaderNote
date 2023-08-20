@@ -17,7 +17,7 @@ internal class Program
             //.WithInputLayout(new Vortice.Direct3D11.InputElementDescription[] { new Vortice.Direct3D11.InputElementDescription("POSITION", 0, Vortice.DXGI.Format.R32G32B32_Float, 0) })
             //.WithPrimitiveTopology(Vortice.Direct3D.PrimitiveTopology.TriangleList)
             .WithConstantBuffer(0, new Vector4(1.0f, 1.0f, 1.0f, 1.0f), name: "cb0")
-            .WithVertexBuffer(0, 12, data: new Vector3[]
+            .WithVertexBuffer("POSITION0", 12, data: new Vector3[]
             {
                 new(0,0,0),
                 new(1,0,0),
@@ -57,7 +57,7 @@ internal class Program
            .WithInputLayout(new Vortice.Direct3D11.InputElementDescription[] { new Vortice.Direct3D11.InputElementDescription("POSITION", 0, Vortice.DXGI.Format.R32G32B32_Float, 0) })
            //.WithPrimitiveTopology(Vortice.Direct3D.PrimitiveTopology.TriangleList)
            .WithConstantBuffer(0, new Vector4(1.0f, 1.0f, 1.0f, 1.0f), name: "cb0")
-           .WithVertexBuffer(0, 12, data: new Vector3[]
+           .WithVertexBuffer("POSITION0", 12, data: new Vector3[]
            {
                 new(0,0,0),
                 new(1,0,0),
@@ -114,21 +114,21 @@ float4 main(PSIn input) : SV_TARGET
             .WithVertexShader("Shaders/VertexShader2.hlsl", name: "vs")
             .WithPixelShader("Shaders/PixelShader.hlsl", name: "ps")
             .WithConstantBuffer(0, new Vector4(1.0f, 1.0f, 1.0f, 1.0f), name: "cb0")
-            .WithVertexBuffer(0, 12, data: new Vector3[]
+            .WithVertexBuffer("POSITION0", 12, data: new Vector3[]
             {
                 new(0,0,0.8f),
                 new(1,0,0.8f),
                 new(0,1,0.8f),
                 new(1,1,0.8f),
             }, name: "vb0")
-            .WithVertexBuffer(1, 12, data: new Vector3[]
+            .WithVertexBuffer("NORMAL0", 12, data: new Vector3[]
             {
                 new(0,0,1),
                 new(0,0,1),
                 new(0,0,1),
                 new(0,0,1),
             }, name: "vb1")
-            .WithVertexBuffer(2, 8, data: new Vector2[]
+            .WithVertexBuffer("TEXCOORD0", 8, data: new Vector2[]
             {
                 new(0,0),
                 new(1,0),
