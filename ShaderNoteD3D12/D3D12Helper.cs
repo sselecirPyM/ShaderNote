@@ -1,14 +1,22 @@
 ﻿using SharpGen.Runtime;
+using System;
 using Vortice.DXGI;
 
 namespace ShaderNoteD3D12;
 
 internal static class D3D12Helper
 {
+    public const int D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING = 5768;
     public static void ReleaseComPtr<T>(ref T comObject) where T : ComObject
     {
         comObject.Release();
         comObject = null;
+    }
+
+    public static void ThrowIfFailed(SharpGen.Runtime.Result hr)
+    {
+        if (hr != SharpGen.Runtime.Result.Ok)
+            throw new NotImplementedException(hr.ToString());
     }
 
     public static Format GetResourceFormat(Format format)

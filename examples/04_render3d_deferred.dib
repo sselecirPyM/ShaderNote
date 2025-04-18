@@ -1,13 +1,13 @@
 #!meta
 
-{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"name":"csharp","languageName":"csharp"},{"name":"fsharp","languageName":"F#","aliases":["f#","fs"]},{"name":"html","languageName":"HTML"},{"name":"http","languageName":"HTTP"},{"name":"javascript","languageName":"JavaScript","aliases":["js"]},{"name":"mermaid","languageName":"Mermaid"},{"name":"pwsh","languageName":"PowerShell","aliases":["powershell"]},{"name":"value"}]}}
 
 #!csharp
 
-#r "../ShaderNote/bin/Debug/net7.0/ShaderNote.dll"
-#r "../ShaderNote.ModelLoaders/bin/Debug/net7.0/ShaderNote.ModelLoaders.dll"
-#r "nuget:Vortice.Direct3D11"
-#r "nuget:Vortice.D3DCompiler"
+#r "../ShaderNote/bin/Debug/net8.0/ShaderNote.dll"
+#r "../ShaderNote.ModelLoaders/bin/Debug/net8.0/ShaderNote.ModelLoaders.dll"
+#r "nuget:Vortice.Direct3D11, 3.5.0"
+#r "nuget:Vortice.D3DCompiler, 3.5.0"
 #r "nuget:SixLabors.ImageSharp"
 
 #!csharp

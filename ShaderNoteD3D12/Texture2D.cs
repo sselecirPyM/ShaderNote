@@ -3,7 +3,7 @@ using Vortice.Direct3D12;
 
 namespace ShaderNoteD3D12;
 
-internal class Texture2D:IDisposable
+public class Texture2D : IDisposable
 {
     public ID3D12Resource resource;
     public ResourceStates resourceState;

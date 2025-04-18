@@ -38,7 +38,7 @@ render.Save("test.png");
 
 ## 在Polyglot Notebooks使用Shader Note
 
-1. 安装.Net 8 SDK
+1. 安装.Net 8 或者更高版本的.Net SDK
 
 2. 在Visual Studio Code中安装Polyglot Notebooks扩展
 

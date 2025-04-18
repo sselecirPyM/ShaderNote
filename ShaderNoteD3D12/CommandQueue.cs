@@ -119,6 +119,16 @@ internal sealed class CommandQueue : IDisposable
 
     }
 
+    internal void ResourceDelayRecycle(ID3D12Object resource)
+    {
+        if (resource != null)
+            commandListRef.Add(new CommandRefObject()
+            {
+                refObject = resource,
+                fenceValue = currentFenceValue,
+            });
+    }
+
     public void CommandRef(ID3D12Object obj)
     {
         obj.AddRef();

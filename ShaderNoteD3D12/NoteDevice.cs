@@ -1,8 +1,9 @@
-﻿using SharpGen.Runtime;
+﻿using ShaderNoteD3D12.Commanding;
+using ShaderNoteD3D12.GPUResources;
+using SharpGen.Runtime;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using Vortice.Direct3D;
@@ -19,14 +20,23 @@ public class NoteDevice : IDisposable
     internal ID3D12Device5 device;
     internal ID3D12GraphicsCommandList4 commandList;
     internal CommandQueue commandQueue;
+    internal CommandQueue copyCommandQueue;
 
     internal DescriptorHeapX srv;
     internal DescriptorHeapX rtv;
     internal DescriptorHeapX dsv;
     //internal DescriptorHeapX sampler;
 
+    internal RingBuffer superRingBuffer = new RingBuffer();
     internal DynamicBuffer uploadBuffer;
     internal DynamicBuffer readBackBuffer;
+
+    internal FastBufferAllocator fastBufferAllocator;
+    internal FastBufferAllocator fastBufferAllocatorUAV;
+
+    internal PSO currentPSO;
+
+    Action delayBinding;
 
     FileSystemWatcher watcher;
     LRUCache<string, object> LRUCache;
@@ -44,6 +54,8 @@ public class NoteDevice : IDisposable
         adapter.Release();
         commandQueue = new CommandQueue();
         commandQueue.Initialize(device, CommandListType.Direct);
+        copyCommandQueue = new CommandQueue();
+        copyCommandQueue.Initialize(device, CommandListType.Copy);
         commandList = commandQueue.GetCommandList();
 
         srv = new DescriptorHeapX();
@@ -76,6 +88,10 @@ public class NoteDevice : IDisposable
         readBackBuffer.CreateReadBackBuffer(device, 1048576 * 64);
         uploadBuffer = new DynamicBuffer();
         uploadBuffer.CreateUploadBuffer(device, 1048576 * 64);
+        
+        superRingBuffer.Initialize(this.device, 1048576 * 32, copyCommandQueue);
+        fastBufferAllocator = new FastBufferAllocator(superRingBuffer, srv, ResourceFlags.None, commandQueue);
+        fastBufferAllocatorUAV = new FastBufferAllocator(superRingBuffer, srv, ResourceFlags.AllowUnorderedAccess, commandQueue);
 
         InitCaches();
     }
@@ -120,6 +136,7 @@ public class NoteDevice : IDisposable
 
     internal void Begin()
     {
+        superRingBuffer.FrameBegin();
         commandQueue.GetCommandList();
         commandList.Reset(commandQueue.GetCommandAllocator());
         commandList.SetDescriptorHeaps(srv.heap);
@@ -127,6 +144,9 @@ public class NoteDevice : IDisposable
 
     internal void Execute()
     {
+        superRingBuffer.FrameEnd();
+        fastBufferAllocator.FrameEnd();
+        fastBufferAllocatorUAV.FrameEnd();
         commandList.Close();
         commandQueue.ExecuteCommandList(commandList);
         commandQueue.NextExecuteIndex();
@@ -146,19 +166,32 @@ public class NoteDevice : IDisposable
         if (device == null)
             return;
 
+        superRingBuffer?.Dispose();
+        fastBufferAllocator?.Dispose();
+        fastBufferAllocatorUAV?.Dispose();
+
+        uploadBuffer?.Dispose();
+        readBackBuffer?.Dispose();
+
+        currentPSO?.Dispose();
+
         srv?.Dispose();
         rtv?.Dispose();
         dsv?.Dispose();
 
+        copyCommandQueue.Dispose();
         commandQueue.Dispose();
         device.Dispose();
 
-        device = null;
-    }
+        foreach(var obj in LRUCache.Values)
+        {
+            if(obj is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
 
-    internal ulong Upload(ReadOnlySpan<byte> data)
-    {
-        return (ulong)uploadBuffer.UploadData(data) + uploadBuffer.buffer.GPUVirtualAddress;
+        device = null;
     }
 
     internal int ReadBack(Texture2D source)
@@ -180,19 +213,6 @@ public class NoteDevice : IDisposable
         commandList.CopyTextureRegion(Dst, 0, 0, 0, Src, null);
 
         return offset;
-    }
-
-    internal ulong GetBuffer(byte[] data)
-    {
-        return Upload(data);
-    }
-
-    internal GpuDescriptorHandle GetCBV(byte[] bytes)
-    {
-        var addr = Upload(bytes);
-        srv.GetTempHandle(out var cpuHandle, out var gpuHandle);
-        device.CreateConstantBufferView(new ConstantBufferViewDescription(addr, (bytes.Length + 255) & ~255), cpuHandle);
-        return gpuHandle;
     }
 
     internal static byte[] GetShader(ShaderInfo shaderInfo, DxcShaderStage shaderStage, out ID3D12ShaderReflection reflection)
@@ -220,10 +240,6 @@ public class NoteDevice : IDisposable
 
                 if (renderStates.vertexBuffers.TryGetValue(element.SemanticName + element.SemanticIndex, out var variable))
                 {
-                    //var buffer = GetBuffer(variable, BindFlags.VertexBuffer);
-                    //deviceContext.IASetVertexBuffer(slot, buffer, (int)variable.Value1, 0);
-                    //ulong addr = GetBuffer((byte[])variable.Value);
-                    //commandList.IASetVertexBuffers(slot, new VertexBufferView(addr, ((byte[])variable.Value).Length, (int)variable.Value1));
                     variable.Invoke(slot);
                 }
                 else
@@ -233,43 +249,70 @@ public class NoteDevice : IDisposable
             }
             renderStates.vertexBufferChanged = false;
         }
+        delayBinding?.Invoke();
+        delayBinding = null;
+    }
 
-
-        for (int i = 0; i < renderStates.currentRootDescriptor.Length; i++)
+    public void SetGraphicsResources(Action<GraphicsCommandProxy> setResources)
+    {
+        delayBinding += () =>
         {
-            RootParameter1 a = renderStates.currentRootDescriptor[i];
-            var range = a.DescriptorTable.Ranges[0];
-            if (range.RangeType == DescriptorRangeType.ConstantBufferView)
-            {
-                if (renderStates.CBV.TryGetValue(range.BaseShaderRegister, out var handle))
-                {
-                    commandList.SetGraphicsRootDescriptorTable(i, handle);
-                }
-            }
-            else if (range.RangeType == DescriptorRangeType.ShaderResourceView)
-            {
-                if (renderStates.SRV.TryGetValue(range.BaseShaderRegister, out var handle))
-                {
-                    commandList.SetGraphicsRootDescriptorTable(i, handle);
-                }
-            }
-            //else if (range.RangeType == DescriptorRangeType.UnorderedAccessView)
-            //{
-            //    if (renderStates.UAV.TryGetValue(range.BaseShaderRegister, out var handle))
-            //    {
-            //        commandList.SetGraphicsRootDescriptorTable(i, handle);
-            //    }
-            //}
-        }
+            var graphicsResourceProxy = new GraphicsCommandProxy();
+            graphicsResourceProxy.noteDevice = this;
+            graphicsResourceProxy.cbvs = currentPSO.rootSignature.cbv;
+            graphicsResourceProxy.srvs = currentPSO.rootSignature.srv;
+            graphicsResourceProxy.uavs = currentPSO.rootSignature.uav;
+            setResources(graphicsResourceProxy);
+        };
     }
 
     internal void SetPipelineState(RenderStates renderStates)
     {
         if (renderStates.pipelineChange)
         {
-            var pipelineState = GetPipelineState(renderStates);
+            currentPSO?.Dispose();
+            currentPSO = null;
 
-            commandList.SetPipelineState(pipelineState);
+            var vs = GetShader(renderStates.vertexShader1, DxcShaderStage.Vertex, out var vsReflection);
+            var ps = GetShader(renderStates.pixelShader1, DxcShaderStage.Pixel, out var psReflection);
+            using var _1 = vsReflection;
+            using var _2 = psReflection;
+
+            var inputElements = renderStates.inputElementDescriptions ?? GetInputElementDescriptions(vsReflection);
+            renderStates.currentInputElements = inputElements;
+
+            PSO pso = new PSO();
+            currentPSO = pso;
+            pso.CreateRootSignature(this, vsReflection, psReflection);
+
+            var pipelineState = device.CreateGraphicsPipelineState(new GraphicsPipelineStateDescription
+            {
+                VertexShader = vs,
+                PixelShader = ps,
+                PrimitiveTopologyType = PrimitiveTopologyType.Triangle,
+                RasterizerState = new RasterizerDescription()
+                {
+                    CullMode = CullMode.Back,
+                    FillMode = FillMode.Solid,
+                    FrontCounterClockwise = false,
+                },
+                InputLayout = new InputLayoutDescription()
+                {
+                    Elements = inputElements
+                },
+                RootSignature = pso.rootSignature.rootSignature,
+                RenderTargetFormats = renderStates.formats,
+                BlendState = renderStates.blendDescription,
+                DepthStencilState = renderStates.depthStencilDescription,
+                DepthStencilFormat = renderStates.depthFormat,
+            });
+            pso.pipelineState = pipelineState;
+
+            commandList.SetGraphicsRootSignature(pso.rootSignature.rootSignature);
+            commandList.SetPipelineState(pso.pipelineState);
+            commandQueue.CommandRef(pso.rootSignature.rootSignature);
+            commandQueue.CommandRef(pipelineState);
+            renderStates.pipelineChange = false;
         }
         if (renderStates.primitiveTopology == PrimitiveTopology.Undefined)
         {
@@ -277,95 +320,6 @@ public class NoteDevice : IDisposable
             commandList.IASetPrimitiveTopology(renderStates.primitiveTopology);
         }
         BindResources(renderStates);
-    }
-
-    ID3D12PipelineState GetPipelineState(RenderStates renderStates)
-    {
-        var vs = GetShader(renderStates.vertexShader1, DxcShaderStage.Vertex, out var vsReflection);
-        var ps = GetShader(renderStates.pixelShader1, DxcShaderStage.Pixel, out var psReflection);
-        using var _1 = vsReflection;
-        using var _2 = psReflection;
-
-        var rootSignatureDescription = GetRootSignatureDescription(renderStates, psReflection ?? vsReflection);
-        var rootSignature = device.CreateRootSignature(rootSignatureDescription);
-        commandList.SetGraphicsRootSignature(rootSignature);
-        renderStates.currentRootDescriptor = rootSignatureDescription.Parameters;
-
-        var inputElements = renderStates.inputElementDescriptions
-            ?? GetInputElementDescriptions(vsReflection);
-        renderStates.currentInputElements = inputElements;
-        var pipelineState = device.CreateGraphicsPipelineState(new GraphicsPipelineStateDescription
-        {
-            VertexShader = vs,
-            PixelShader = ps,
-            PrimitiveTopologyType = PrimitiveTopologyType.Triangle,
-            RasterizerState = new RasterizerDescription()
-            {
-                CullMode = CullMode.Back,
-                FillMode = FillMode.Solid,
-                FrontCounterClockwise = false,
-            },
-            InputLayout = new InputLayoutDescription()
-            {
-                Elements = inputElements
-            },
-            RootSignature = rootSignature,
-            RenderTargetFormats = renderStates.formats,
-            BlendState = renderStates.blendDescription,
-            DepthStencilState = renderStates.depthStencilDescription,
-            DepthStencilFormat = renderStates.depthFormat,
-        });
-
-        commandQueue.CommandRef(rootSignature);
-        commandQueue.CommandRef(pipelineState);
-        rootSignature.Release();
-        pipelineState.Release();
-        return pipelineState;
-    }
-
-    static RootSignatureDescription1 GetRootSignatureDescription(RenderStates renderStates, ID3D12ShaderReflection reflection)
-    {
-        var parameters = new List<RootParameter1>();
-        var samplers = new List<StaticSamplerDescription>();
-
-        foreach (var res in reflection.BoundResources)
-        {
-            if (res.Type == ShaderInputType.Texture)
-            {
-                parameters.Add(new RootParameter1(new RootDescriptorTable1(new DescriptorRange1(
-                    DescriptorRangeType.ShaderResourceView, 1, res.BindPoint, res.Space)), ShaderVisibility.All));
-            }
-            else if (res.Type == ShaderInputType.ConstantBuffer)
-            {
-                parameters.Add(new RootParameter1(new RootDescriptorTable1(new DescriptorRange1(
-                    DescriptorRangeType.ConstantBufferView, 1, res.BindPoint, res.Space)), ShaderVisibility.All));
-            }
-            else if (res.Type == ShaderInputType.Sampler)
-            {
-                if (renderStates.sampler.TryGetValue(res.BindPoint, out var desc))
-                {
-                    samplers.Add(new StaticSamplerDescription(desc.Filter, desc.AddressU, desc.AddressV, desc.AddressW, desc.MipLODBias,
-                        desc.MaxAnisotropy, desc.ComparisonFunction, StaticBorderColor.TransparentBlack, desc.MinLOD, desc.MaxLOD, res.BindPoint, 0));
-                }
-                else
-                {
-                    samplers.Add(new StaticSamplerDescription(Filter.MinMagMipLinear, TextureAddressMode.Wrap, TextureAddressMode.Wrap, TextureAddressMode.Wrap,
-                        0, 16, ComparisonFunction.Never, StaticBorderColor.TransparentBlack, float.MinValue, float.MaxValue, res.BindPoint, 0));
-                }
-            }
-            else if (res.Type == ShaderInputType.UnorderedAccessViewRWTyped || res.Type == ShaderInputType.UnorderedAccessViewRWStructured)
-            {
-                parameters.Add(new RootParameter1(new RootDescriptorTable1(new DescriptorRange1(
-                        DescriptorRangeType.UnorderedAccessView, 1, res.BindPoint, res.Space)), ShaderVisibility.All));
-            }
-        }
-
-        return new RootSignatureDescription1()
-        {
-            Parameters = parameters.ToArray(),
-            StaticSamplers = samplers.ToArray(),
-            Flags = RootSignatureFlags.AllowInputAssemblerInputLayout,
-        };
     }
 
     static InputElementDescription[] GetInputElementDescriptions(ID3D12ShaderReflection reflection)
@@ -439,15 +393,10 @@ public class NoteDevice : IDisposable
         return descs;
     }
 
-    internal ID3D12Resource GetTexture(VariableSlot variableSlot)
-    {
-        return GetTexture(variableSlot.File);
-    }
-    internal ID3D12Resource GetTexture(string file)
+    internal Texture2D GetTexture(string file)
     {
         var path = Path.GetFullPath(file);
-
-        return LRUCache.GetObject(path, (key) =>
+        var resource = LRUCache.GetObject(path, (key) =>
         {
             var image = Image.Load<Rgba32>(file);
             if (!image.Frames[0].DangerousTryGetSinglePixelMemory(out var memory))
@@ -475,5 +424,9 @@ public class NoteDevice : IDisposable
 
             return texture;
         }) as ID3D12Resource;
+        return new Texture2D()
+        {
+            resource = resource,
+        };
     }
 }

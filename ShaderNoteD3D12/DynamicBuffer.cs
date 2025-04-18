@@ -54,9 +54,9 @@ public class DynamicBuffer : IDisposable
         buffer.Unmap(0);
     }
 
-    unsafe public int UploadData(ReadOnlySpan<byte> data)
+    unsafe public int UploadData(ReadOnlySpan<byte> data, int align = 256)
     {
-        int offset = GetOffsetAndMove(data.Length);
+        int offset = GetOffsetAndMove(data.Length, align);
 
         void* ptr = null;
         buffer.Map(0, &ptr);
@@ -75,14 +75,16 @@ public class DynamicBuffer : IDisposable
     }
     public ID3D12Resource buffer;
 
-    internal int GetOffsetAndMove(int size)
+    internal int GetOffsetAndMove(int size, int align = 256)
     {
-        if (((currentPosition + size + 511) & ~511) > this.size)
+        int a1 = align - 1;
+
+        if (((currentPosition + size + a1) & ~a1) > this.size)
         {
             currentPosition = 0;
         }
         int result = currentPosition;
-        currentPosition = ((currentPosition + size + 511) & ~511) % this.size;
+        currentPosition = ((currentPosition + size + a1) & ~a1) % this.size;
         return result;
     }
 
