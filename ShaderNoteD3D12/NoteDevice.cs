@@ -182,29 +182,27 @@ public class NoteDevice : IDisposable
         return offset;
     }
 
-    internal ulong GetBuffer(VariableSlot variableSlot)
+    internal ulong GetBuffer(byte[] data)
     {
-        byte[] bytes = (byte[])variableSlot.Value;
-        return Upload(bytes);
+        return Upload(data);
     }
 
-    internal GpuDescriptorHandle GetCBV(VariableSlot variableSlot)
+    internal GpuDescriptorHandle GetCBV(byte[] bytes)
     {
-        byte[] bytes = (byte[])variableSlot.Value;
         var addr = Upload(bytes);
         srv.GetTempHandle(out var cpuHandle, out var gpuHandle);
         device.CreateConstantBufferView(new ConstantBufferViewDescription(addr, (bytes.Length + 255) & ~255), cpuHandle);
         return gpuHandle;
     }
 
-    internal static byte[] GetShader(VariableSlot variableSlot, DxcShaderStage shaderStage, out ID3D12ShaderReflection reflection)
+    internal static byte[] GetShader(ShaderInfo shaderInfo, DxcShaderStage shaderStage, out ID3D12ShaderReflection reflection)
     {
-        if (variableSlot == null)
+        if (shaderInfo == null)
         {
             reflection = null;
             return null;
         }
-        using var result = DxcCompiler.Compile(shaderStage, File.ReadAllText(variableSlot.File), variableSlot.EntryPoint, fileName: variableSlot.File);
+        using var result = DxcCompiler.Compile(shaderStage, File.ReadAllText(shaderInfo.file), shaderInfo.entryPoint, fileName: shaderInfo.sourcePath);
         reflection = DxcCompiler.Utils.CreateReflection<ID3D12ShaderReflection>(result.GetOutput(DxcOutKind.Reflection));
         return result.GetObjectBytecodeArray();
     }
@@ -224,8 +222,9 @@ public class NoteDevice : IDisposable
                 {
                     //var buffer = GetBuffer(variable, BindFlags.VertexBuffer);
                     //deviceContext.IASetVertexBuffer(slot, buffer, (int)variable.Value1, 0);
-                    ulong addr = GetBuffer(variable);
-                    commandList.IASetVertexBuffers(slot, new VertexBufferView(addr, ((byte[])variable.Value).Length, (int)variable.Value1));
+                    //ulong addr = GetBuffer((byte[])variable.Value);
+                    //commandList.IASetVertexBuffers(slot, new VertexBufferView(addr, ((byte[])variable.Value).Length, (int)variable.Value1));
+                    variable.Invoke(slot);
                 }
                 else
                 {
@@ -292,7 +291,7 @@ public class NoteDevice : IDisposable
         commandList.SetGraphicsRootSignature(rootSignature);
         renderStates.currentRootDescriptor = rootSignatureDescription.Parameters;
 
-        var inputElements = renderStates.inputElementDescriptions?.Value as InputElementDescription[]
+        var inputElements = renderStates.inputElementDescriptions
             ?? GetInputElementDescriptions(vsReflection);
         renderStates.currentInputElements = inputElements;
         var pipelineState = device.CreateGraphicsPipelineState(new GraphicsPipelineStateDescription

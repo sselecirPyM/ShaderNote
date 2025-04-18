@@ -41,15 +41,17 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.Image,
             commonSlot = new VariableSlot()
             {
-                File = (file == null) ? null : shortCut,
-                ShortCut = shortCut,
+                Call = (noteDevice, renderStates) =>
+                {
+                    var texture = noteDevice.GetTexture((file == null) ? null : shortCut);
+                    noteDevice.commandQueue.CommandRef(texture);
+                    renderStates.SRV[slot] = RenderRecordItem.CreateSRV(noteDevice, texture);
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
-            offset = slot,
             PreviousRecord = this.recordItem
         };
         return this with { recordItem = recordItem };
@@ -59,20 +61,42 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.RenderImage,
-            commonSlot = new VariableSlot()
-            {
-                Value = new ResultWrap()
-                {
-                    renderResult = renderResult,
-                    channel = channel,
-                },
-                SlotName = name,
-                AsArgument = argument,
-            },
-            offset = slot,
             PreviousRecord = this.recordItem
         };
+        var commonSlot = new VariableSlot()
+        {
+            Call = (noteDevice, renderStates) =>
+            {
+                var tex = renderStates.RenderTexture[recordItem];
+                var gpuHandle = RenderRecordItem.CreateSRV(noteDevice, tex.resource);
+                renderStates.SRV[slot] = gpuHandle;
+                tex.StateTrans(noteDevice.commandList, ResourceStates.GenericRead);
+            },
+            BeforeRenderCall = (noteDevice, renderStates) =>
+            {
+                if (!renderResult.rendered)
+                    renderStates.trash.Add(renderResult);
+                renderResult.CheckRender();
+
+                if (channel == -1 && renderResult.depthTexture != null)
+                {
+                    var tex = renderResult.depthTexture;
+                    noteDevice.commandQueue.CommandRef(tex.resource);
+
+                    renderStates.RenderTexture.Add(recordItem, tex);
+                }
+                if (channel >= 0)
+                {
+                    var tex = renderResult.texture2Ds[channel];
+                    noteDevice.commandQueue.CommandRef(tex.resource);
+
+                    renderStates.RenderTexture.Add(recordItem, tex);
+                }
+            },
+            SlotName = name,
+            AsArgument = argument,
+        };
+        recordItem.commonSlot = commonSlot;
         return this with { recordItem = recordItem };
     }
 
@@ -83,14 +107,16 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.Sampler,
             commonSlot = new VariableSlot()
             {
-                Value = new SamplerDescription(filter, u, v, w, mipLODBias, maxAnisotropy, comparisonFunc, new Vortice.Mathematics.Color4(borderColor), minLOD, maxLOD),
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.sampler[slot] = new SamplerDescription(filter, u, v, w, mipLODBias, maxAnisotropy, comparisonFunc, new Vortice.Mathematics.Color4(borderColor), minLOD, maxLOD);
+                    renderStates.pipelineChange = true;
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
-            offset = slot,
             PreviousRecord = this.recordItem
         };
         return this with { recordItem = recordItem };
@@ -106,16 +132,20 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.VertexBuffer,
             commonSlot = new VariableSlot()
             {
-                Value = bytes,
-                Value1 = stride,
-                ShortCut = shortCut,
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.vertexBuffers[slot] = (slot) =>
+                    {
+                        ulong addr = noteDevice.GetBuffer(bytes);
+                        noteDevice.commandList.IASetVertexBuffers(slot, new VertexBufferView(addr, bytes.Length, stride));
+                    };
+                    renderStates.vertexBufferChanged = true;
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
-            stride = stride,
             bindSlot = slot,
             PreviousRecord = this.recordItem
         };
@@ -154,19 +184,19 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.IndexBuffer,
             commonSlot = new VariableSlot()
             {
-                File = (file == null) ? null : shortCut,
-                Value = data1,
-                Value1 = byteWidth switch
+                Call = (noteDevice, renderStates) =>
                 {
-                    1 => Format.R8_UInt,
-                    2 => Format.R16_UInt,
-                    4 => Format.R32_UInt,
-                    _ => Format.Unknown
+                    ulong addr = noteDevice.GetBuffer(data1);
+                    noteDevice.commandList.IASetIndexBuffer(new IndexBufferView(addr, (data1).Length, byteWidth switch
+                    {
+                        1 => Format.R8_UInt,
+                        2 => Format.R16_UInt,
+                        4 => Format.R32_UInt,
+                        _ => Format.Unknown
+                    }));
                 },
-                ShortCut = shortCut,
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -179,15 +209,15 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.ConstantBuffer,
             commonSlot = new VariableSlot()
             {
-                File = (file == null) ? null : Path.GetFullPath(file),
-                ShortCut = (file == null) ? null : Path.GetFullPath(file),
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.CBV[slot] = noteDevice.GetCBV(File.ReadAllBytes((file == null) ? null : Path.GetFullPath(file)));
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
-            offset = slot,
             PreviousRecord = this.recordItem
         };
         return this with { recordItem = recordItem };
@@ -199,15 +229,15 @@ public record RenderRecord
         string shortCut = GetHashShortCut(bytes);
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.ConstantBuffer,
             commonSlot = new VariableSlot()
             {
-                Value = bytes,
-                ShortCut = shortCut,
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.CBV[slot] = noteDevice.GetCBV(bytes);
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
-            offset = slot,
             PreviousRecord = this.recordItem
         };
         return this with { recordItem = recordItem };
@@ -220,15 +250,15 @@ public record RenderRecord
         string shortCut = GetHashShortCut(bytes);
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.ConstantBuffer,
             commonSlot = new VariableSlot()
             {
-                Value = bytes,
-                ShortCut = shortCut,
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.CBV[slot] = noteDevice.GetCBV(bytes);
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
-            offset = slot,
             PreviousRecord = this.recordItem
         };
         return this with { recordItem = recordItem };
@@ -239,11 +269,13 @@ public record RenderRecord
         string shortCut = (inputElementDescriptions == null) ? null : ObjectShortCut(inputElementDescriptions);
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.InputLayout,
             commonSlot = new VariableSlot()
             {
-                Value = inputElementDescriptions,
-                ShortCut = shortCut,
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.inputElementDescriptions = inputElementDescriptions;
+                    renderStates.pipelineChange = true;
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -256,10 +288,13 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.PrimitiveTopology,
             commonSlot = new VariableSlot()
             {
-                Value = primitiveTopology,
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.primitiveTopology = primitiveTopology;
+                    noteDevice.commandList.IASetPrimitiveTopology(renderStates.primitiveTopology);
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -278,14 +313,19 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.VertexShader,
             commonSlot = new VariableSlot()
             {
-                File = (file == null) ? null : shortCut,
-                Value = source,
-                Value1 = sourcePath,
-                EntryPoint = entryPoint,
-                ShortCut = shortCut,
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.vertexShader1 = new ShaderInfo()
+                    {
+                        source = source,
+                        file = shortCut,
+                        sourcePath = sourcePath,
+                        entryPoint = entryPoint,
+                    };
+                    renderStates.pipelineChange = true;
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -304,14 +344,19 @@ public record RenderRecord
 
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.PixelShader,
             commonSlot = new VariableSlot()
             {
-                File = (file == null) ? null : shortCut,
-                Value = source,
-                Value1 = sourcePath,
-                EntryPoint = entryPoint,
-                ShortCut = shortCut,
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.pixelShader1 = new ShaderInfo()
+                    {
+                        source = source,
+                        file = shortCut,
+                        sourcePath = sourcePath,
+                        entryPoint = entryPoint,
+                    };
+                    renderStates.pipelineChange = true;
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -324,16 +369,13 @@ public record RenderRecord
     {
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.DrawIndexedInstances,
             commonSlot = new VariableSlot()
             {
-                Value = new DrawIndexedInstances()
+                Call = (noteDevice, renderStates) =>
                 {
-                    baseVertexLocation = baseVertexLocation,
-                    indexCountPerInstance = indexCountPerInstance,
-                    instanceCount = instanceCount,
-                    startIndexLocation = startIndexLocation,
-                    startInstanceLocation = startInstanceLocation
+                    noteDevice.SetPipelineState(renderStates);
+                    noteDevice.commandList.DrawIndexedInstanced(indexCountPerInstance, instanceCount, startIndexLocation, baseVertexLocation, startInstanceLocation);
+                    renderStates.pipelineChange = false;
                 },
                 SlotName = name,
                 AsArgument = argument,
@@ -368,11 +410,12 @@ public record RenderRecord
         string shortCut = "blend_state_" + blendDescription.GetHashCode().ToString();
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.BlendState,
             commonSlot = new VariableSlot()
             {
-                Value = blendDescription,
-                ShortCut = shortCut,
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.blendDescription = blendDescription;
+                },
                 SlotName = name,
                 AsArgument = argument,
             },
@@ -386,11 +429,13 @@ public record RenderRecord
         string shortCut = "depth_stencil_" + depthStencilDescription.GetHashCode().ToString();
         var recordItem = new RenderRecordItem()
         {
-            renderAction = RenderAction.DepthStencil,
             commonSlot = new VariableSlot()
             {
-                Value = depthStencilDescription,
-                ShortCut = shortCut,
+                Call = (noteDevice, renderStates) =>
+                {
+                    renderStates.depthStencilDescription = depthStencilDescription;
+                    renderStates.pipelineChange = true;
+                },
                 SlotName = name,
                 AsArgument = argument,
             },

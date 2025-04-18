@@ -25,7 +25,7 @@ public class NoteDevice : IDisposable
     FileSystemWatcher watcher;
     public NoteDevice(int LRUCapacity = 256, bool debug = true)
     {
-        D3D11CreateDevice(null, DriverType.Hardware, debug ? DeviceCreationFlags.Debug : DeviceCreationFlags.None, null, out var _device, out var _deviceContext).CheckError();
+        D3D11CreateDevice(null, DriverType.Hardware, debug ? DeviceCreationFlags.Debug : DeviceCreationFlags.None, null, out ID3D11Device _device, out ID3D11DeviceContext _deviceContext).CheckError();
 
         device = _device.QueryInterface<ID3D11Device5>();
         ReleaseComPtr(ref _device);

@@ -1,9 +1,11 @@
 # ShaderNote
 
-用于快速验证着色器效果的工具。
+编写3D应用程序也许没那么困难，这个工具将帮助你快速实现你的想法。
 
 
 ## 入门
+
+以下代码将图像绘制在目标上，然后保存结果。
 
 ```CSharp
 using ShaderNote;
@@ -36,11 +38,11 @@ render.Save("test.png");
 
 ## 在Polyglot Notebooks使用Shader Note
 
-1. 安装.Net 7 SDK
+1. 安装.Net 8 SDK
 
 2. 在Visual Studio Code中安装Polyglot Notebooks扩展
 
-3. 注册格式
+3. 为了正常显示html，在notebook中加入以下代码
 
 ```CSharp
 using Microsoft.DotNet.Interactive.Formatting;

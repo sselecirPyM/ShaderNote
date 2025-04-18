@@ -1,4 +1,6 @@
-﻿namespace ShaderNoteD3D12;
+﻿using System;
+
+namespace ShaderNoteD3D12;
 
 public class VariableSlot
 {
@@ -11,4 +13,7 @@ public class VariableSlot
     public string EntryPoint { get; set; }
 
     public bool AsArgument { get; set; }
+
+    internal Action<NoteDevice, RenderStates> Call { get; set; }
+    internal Action<NoteDevice, RenderStates> BeforeRenderCall { get; set; }
 }
